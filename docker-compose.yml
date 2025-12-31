@@ -1,0 +1,21 @@
+name: "archiver"
+
+services:
+  broker:
+    container_name: "valkey"
+    image: "valkey/valkey"
+    restart: unless-stopped
+    command:
+      - "--requirepass 8f6dc2418040a6b36d60ffdc519ff85b32f3027f8d487517eed23669b93b2250"
+    networks:
+      archiver-net:
+        ipv4_address: 172.18.0.2
+
+networks:
+  archiver-net:
+    name: "archiver-net"
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.18.0.0/24
