@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -55,14 +58,15 @@ func main() {
 		for _, stream := range streams {
 			for _, message := range stream.Messages {
 				jobID := message.Values["job_id"].(string)
+				targetURL := message.Values["target_url"].(string)
 
-				// Use background context for processing to ensure we can 
+				// Use background context for processing to ensure we can
 				// update status and ack even if shutdown signal is received.
 				processCtx := context.Background()
 
 				rdb.HSet(processCtx, "job:"+jobID, "status", "running")
 
-				err := runCrawl(jobID)
+				err := runCrawl(jobID, targetURL)
 
 				if err != nil {
 					rdb.HSet(processCtx, "job:"+jobID, "status", "failed", "error", err.Error())
@@ -78,8 +82,57 @@ func main() {
 	log.Println("Worker stopped gracefully")
 }
 
-func runCrawl(jobID string) error {
+func runCrawl(jobID, targetURL string) error {
 	fmt.Printf("Recieved job with ID %s\n", jobID)
+
+	cmd := exec.Command(
+		"node", "/app/dist/main.js", "crawl",
+		"--url", targetURL,
+		"--generateWACZ",
+		"--collection", "test",
+		"--ignoreRobots",
+		"--text",
+		"--workers", "2",
+		"--scopeType", "prefix",
+		"--limit", "1000",
+		"--sizeLimit", "104857600",
+		"--depth", "0")
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("Crawl failed for %s: %v", targetURL, err)
+		return err
+	}
+
+	archivesDir := os.Getenv("ARCHIVES_DIR")
+	if archivesDir == "" {
+		return nil
+	}
+
+	if info, err := os.Stat(archivesDir); err != nil || !info.IsDir() {
+		return nil
+	}
+
+	srcPath := "collections/test/test.wacz"
+	dstPath := filepath.Join(archivesDir, jobID+".wacz")
+
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source wacz: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination wacz: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy wacz: %w", err)
+	}
 
 	return nil
 }

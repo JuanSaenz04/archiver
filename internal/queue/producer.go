@@ -23,7 +23,8 @@ func EnqueueCrawl(ctx context.Context, rdb *redis.Client, targetURL string) (*uu
 	err = rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: "crawl_stream",
 		Values: map[string]interface{}{
-			"job_id": jobID.String(),
+			"job_id":     jobID.String(),
+			"target_url": targetURL,
 		},
 	}).Err()
 
