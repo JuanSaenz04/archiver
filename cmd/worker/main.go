@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
 	var opts *redis.Options
 	var err error
@@ -33,32 +37,45 @@ func main() {
 			Consumer: "worker-1",
 			Streams:  []string{"crawl_stream", ">"},
 			Count:    1,
-			Block:    0,
+			Block:    1 * time.Second,
 		}).Result()
 
 		if err != nil {
-			log.Fatal(err)
+			if err == context.Canceled {
+				log.Println("Worker shutting down...")
+				break
+			}
+			if err == redis.Nil {
+				continue
+			}
+			log.Printf("Error reading stream: %v", err)
+			continue
 		}
 
 		for _, stream := range streams {
 			for _, message := range stream.Messages {
 				jobID := message.Values["job_id"].(string)
 
-				rdb.HSet(ctx, "job:"+jobID, "status", "running")
+				// Use background context for processing to ensure we can 
+				// update status and ack even if shutdown signal is received.
+				processCtx := context.Background()
+
+				rdb.HSet(processCtx, "job:"+jobID, "status", "running")
 
 				err := runCrawl(jobID)
 
 				if err != nil {
-					rdb.HSet(ctx, "job:"+jobID, "status", "failed", "error", err.Error())
+					rdb.HSet(processCtx, "job:"+jobID, "status", "failed", "error", err.Error())
 				} else {
-					rdb.HSet(ctx, "job:"+jobID, "status", "completed")
+					rdb.HSet(processCtx, "job:"+jobID, "status", "completed")
 				}
 
-				rdb.XAck(ctx, "crawl_stream", "worker_group", message.ID)
+				rdb.XAck(processCtx, "crawl_stream", "worker_group", message.ID)
 			}
 		}
 	}
 
+	log.Println("Worker stopped gracefully")
 }
 
 func runCrawl(jobID string) error {
