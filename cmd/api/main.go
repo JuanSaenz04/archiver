@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/api"
 	"github.com/labstack/echo/v4"
@@ -35,15 +36,19 @@ func main() {
 	handler.SetRoutes(e)
 
 	go func() {
-		err := e.Start(":1080")
-		if err != nil {
-			log.Printf("Error: %s", err.Error())
-		} else {
-			log.Printf("Info: stopping gracefully...")
+		if err := e.Start(":1080"); err != nil {
+			e.Logger.Info("shutting down server")
 		}
 	}()
 
 	<-ctx.Done()
 	cancel()
-	e.Close()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		e.Logger.Fatal(err)
+	}
+
+	log.Println("Server stopped gracefully")
 }
