@@ -14,4 +14,7 @@ const (
 type CrawlOptions struct {
 	Name      string    `json:"name"`
 	ScopeType ScopeType `json:"scopeType"`
+	PageLimit int       `json:"page_limit"`
+	SizeLimit int       `json:"size_limit"`
+	Depth     int       `json:"depth"`
 }
