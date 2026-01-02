@@ -9,5 +9,6 @@ type Job struct {
 }
 
 type CrawlRequest struct {
-	URL string `json:"url"`
+	URL     string       `json:"url"`
+	Options CrawlOptions `json:"crawl_options"`
 }
