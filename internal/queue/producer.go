@@ -22,6 +22,11 @@ func EnqueueCrawl(ctx context.Context, rdb *redis.Client, targetURL string, opti
 		return nil, err
 	}
 
+	// Index the job so we can list them later
+	if err := rdb.SAdd(ctx, "jobs:index", jobID.String()).Err(); err != nil {
+		return nil, err
+	}
+
 	optsBytes, err := json.Marshal(options)
 	if err != nil {
 		return nil, err

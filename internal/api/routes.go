@@ -6,4 +6,5 @@ import (
 
 func (handler *Handler) SetRoutes(e *echo.Echo) {
 	e.POST("/jobs", handler.HandleNewJob)
+	e.GET("/jobs", handler.HandleGetJobs)
 }

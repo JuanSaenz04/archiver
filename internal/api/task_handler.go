@@ -25,3 +25,13 @@ func (handler *Handler) HandleNewJob(c echo.Context) error {
 		"status": "pending",
 	})
 }
+
+func (handler *Handler) HandleGetJobs(c echo.Context) error {
+	jobs, err := handler.jobRepo.GetAllJobs(c.Request().Context())
+
+	if err != nil {
+		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+	}
+
+	return c.JSON(http.StatusOK, jobs)
+}
