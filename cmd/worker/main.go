@@ -60,21 +60,17 @@ func main() {
 				jobID := message.Values["job_id"].(string)
 				targetURL := message.Values["target_url"].(string)
 
-				// Use background context for processing to ensure we can
-				// update status and ack even if shutdown signal is received.
-				processCtx := context.Background()
+				rdb.HSet(ctx, "job:"+jobID, "status", "running")
 
-				rdb.HSet(processCtx, "job:"+jobID, "status", "running")
-
-				err := runCrawl(jobID, targetURL)
+				err := runCrawl(ctx, jobID, targetURL)
 
 				if err != nil {
-					rdb.HSet(processCtx, "job:"+jobID, "status", "failed", "error", err.Error())
+					rdb.HSet(ctx, "job:"+jobID, "status", "failed", "error", err.Error())
 				} else {
-					rdb.HSet(processCtx, "job:"+jobID, "status", "completed")
+					rdb.HSet(ctx, "job:"+jobID, "status", "completed")
 				}
 
-				rdb.XAck(processCtx, "crawl_stream", "worker_group", message.ID)
+				rdb.XAck(ctx, "crawl_stream", "worker_group", message.ID)
 			}
 		}
 	}
@@ -82,10 +78,11 @@ func main() {
 	log.Println("Worker stopped gracefully")
 }
 
-func runCrawl(jobID, targetURL string) error {
+func runCrawl(ctx context.Context, jobID, targetURL string) error {
 	fmt.Printf("Recieved job with ID %s\n", jobID)
 
-	cmd := exec.Command(
+	cmd := exec.CommandContext(
+		ctx,
 		"node", "/app/dist/main.js", "crawl",
 		"--url", targetURL,
 		"--generateWACZ",
