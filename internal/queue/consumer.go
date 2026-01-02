@@ -2,14 +2,16 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
+	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/redis/go-redis/v9"
 )
 
 // Processor is a function that processes a job.
-type Processor func(ctx context.Context, jobID, targetURL string) error
+type Processor func(ctx context.Context, jobID, targetURL string, options models.CrawlOptions) error
 
 // StartWorker starts the worker loop to consume jobs from Redis.
 func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
@@ -53,7 +55,6 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 				jobID, ok := message.Values["job_id"].(string)
 				if !ok {
 					log.Printf("Error: job_id not found or not a string in message %s", message.ID)
-					// Determine if we should Ack malformed messages to avoid stuck loop
 					rdb.XAck(ctx, "crawl_stream", "worker_group", message.ID)
 					continue
 				}
@@ -64,9 +65,17 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 					continue
 				}
 
+				var opts models.CrawlOptions
+				if optsStr, ok := message.Values["options"].(string); ok {
+					if err := json.Unmarshal([]byte(optsStr), &opts); err != nil {
+						log.Printf("Error unmarshaling options for job %s: %v", jobID, err)
+						// Proceed with default/empty options or fail? Proceeding for now.
+					}
+				}
+
 				rdb.HSet(ctx, "job:"+jobID, "status", "running")
 
-				err := process(ctx, jobID, targetURL)
+				err := process(ctx, jobID, targetURL, opts)
 
 				if err != nil {
 					rdb.HSet(ctx, "job:"+jobID, "status", "failed", "error", err.Error())

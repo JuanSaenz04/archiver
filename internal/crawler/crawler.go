@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/JuanSaenz04/archiver/internal/models"
 )
 
 // Run executes the crawler for a specific job.
-func Run(ctx context.Context, jobID, targetURL string) error {
+func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptions) error {
 	fmt.Printf("Received job with ID %s\n", jobID)
 
 	cmd := exec.CommandContext(
@@ -19,11 +21,11 @@ func Run(ctx context.Context, jobID, targetURL string) error {
 		"node", "/app/dist/main.js", "crawl",
 		"--url", targetURL,
 		"--generateWACZ",
-		"--collection", "test",
+		"--collection", jobID,
 		"--ignoreRobots",
 		"--text",
 		"--workers", "2",
-		"--scopeType", "prefix",
+		"--scopeType", string(options.ScopeType),
 		"--limit", "1000",
 		"--sizeLimit", "104857600",
 		"--depth", "0")
@@ -47,7 +49,7 @@ func Run(ctx context.Context, jobID, targetURL string) error {
 		return nil
 	}
 
-	srcPath := "collections/test/test.wacz"
+	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
 	dstPath := filepath.Join(archivesDir, jobID+".wacz")
 
 	src, err := os.Open(srcPath)
