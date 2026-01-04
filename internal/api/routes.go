@@ -7,5 +7,6 @@ import (
 func (handler *Handler) SetRoutes(e *echo.Echo) {
 	e.POST("/jobs", handler.HandleNewJob)
 	e.GET("/jobs", handler.HandleGetJobs)
-	e.GET("/archives", handler.GetArchives)
+	e.GET("/archives", handler.HandleGetArchives)
+	e.GET("/archives/:archiveName", handler.HandleGetArchive)
 }
