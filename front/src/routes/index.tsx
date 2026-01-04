@@ -12,7 +12,7 @@ function Index() {
     <SidebarProvider>
       <AppSidebar />
       <main>
-        <SidebarTrigger />
+        <SidebarTrigger className='pl-2'/>
         <ArchiveViewer />
       </main>
     </SidebarProvider>

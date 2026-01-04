@@ -31,13 +31,15 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader />
+      <SidebarHeader>
+        <h2 className="font-bold text-center pt-2">Archives</h2>
+      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
               { archives ?
-                archives.map(archive => <SidebarMenuItem>{archive.name}</SidebarMenuItem>) :
+                archives.map(archive => <SidebarMenuItem>{archive.name.slice(0, -5)}</SidebarMenuItem>) :
                 "Loading..."
               }
             </SidebarMenu>
