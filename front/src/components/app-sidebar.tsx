@@ -37,7 +37,7 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
   }, [])
 
   return (
-    <Sidebar>
+    <Sidebar className="absolute h-full border-r">
       <SidebarHeader>
         <h2 className="font-bold text-center pt-2">Archives</h2>
       </SidebarHeader>

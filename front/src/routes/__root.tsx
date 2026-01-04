@@ -9,9 +9,9 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { ModeToggle } from '@/components/mode-toggle'
 
 const RootLayout = () => (
-  <>
-    <ThemeProvider>
-      <div className="p-2 flex gap-2 justify-center">
+  <ThemeProvider>
+    <div className="h-screen flex flex-col overflow-hidden">
+      <div className="p-2 flex gap-2 justify-center shrink-0">
         <NavigationMenu>
           <NavigationMenuList>
             <NavigationMenuItem>
@@ -34,9 +34,11 @@ const RootLayout = () => (
           </NavigationMenuList>
         </NavigationMenu>
       </div>
-      <Outlet />
-    </ThemeProvider>
-  </>
+      <div className="flex-1 min-h-0">
+        <Outlet />
+      </div>
+    </div>
+  </ThemeProvider>
 )
 
 export const Route = createRootRoute({ component: RootLayout })

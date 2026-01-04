@@ -1,6 +1,6 @@
 import { AppSidebar } from '@/components/app-sidebar'
 import { ArchiveViewer } from '@/components/archive-viewer'
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
@@ -16,17 +16,21 @@ function Index() {
 
   return (
 
-    <SidebarProvider>
+    <SidebarProvider className="h-full min-h-0 relative">
 
       <AppSidebar onArchiveSelected={setSelectedArchive} selectedArchive={selectedArchive} />
 
-      <main className="w-full">
+      <SidebarInset className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-        <SidebarTrigger className='pl-2'/>
+        <header className="flex h-12 shrink-0 items-center gap-2 px-4">
+          <SidebarTrigger />
+        </header>
 
-        <ArchiveViewer archiveName={selectedArchive} />
+        <div className="flex-1 min-h-0 p-4 pt-0">
+          <ArchiveViewer archiveName={selectedArchive} />
+        </div>
 
-      </main>
+      </SidebarInset>
 
     </SidebarProvider>
 

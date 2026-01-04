@@ -8,7 +8,7 @@ export function ArchiveViewer({ archiveName } : Props) {
   
     return (
   
-      <div className="h-[80vh] w-full bg-gray-100 rounded-md overflow-hidden border">
+      <div className="h-full w-full bg-muted/50 rounded-xl overflow-hidden border shadow-sm">
   
           {archiveName ? (
   
@@ -26,7 +26,7 @@ export function ArchiveViewer({ archiveName } : Props) {
   
           ) : (
   
-              <div className="flex items-center justify-center h-full text-gray-500">
+              <div className="flex items-center justify-center h-full text-muted-foreground">
   
                   Select an archive to view
   
