@@ -43,13 +43,13 @@ func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptio
 
 	archivesDir := os.Getenv("ARCHIVES_DIR")
 	if archivesDir == "" {
+		log.Println("ARCHIVES_DIR directory not set, archives won't be persisted.")
 		return nil
 	}
 
-	// Ensure archives directory exists
-	if info, err := os.Stat(archivesDir); err != nil || !info.IsDir() {
-		// We might want to log this in the future?
-		return nil
+	if err := os.MkdirAll(archivesDir, 0755); err != nil {
+		log.Printf("Crawl failed for %s: %v", targetURL, err)
+		return err
 	}
 
 	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
