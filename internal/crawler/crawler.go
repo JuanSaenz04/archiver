@@ -30,7 +30,7 @@ func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptio
 		"--workers", "2",
 		"--scopeType", string(options.ScopeType),
 		"--limit", strconv.Itoa(options.PageLimit),
-		"--sizeLimit", strconv.Itoa(options.SizeLimit),
+		"--sizeLimit", strconv.Itoa(options.SizeLimit*1024*1024),
 		"--depth", strconv.Itoa(options.Depth))
 
 	cmd.Stdout = os.Stdout
@@ -88,7 +88,7 @@ func setDefaultValuesIfEmpty(options *models.CrawlOptions) {
 	}
 
 	if options.SizeLimit < 0 {
-		options.SizeLimit = 104857600
+		options.SizeLimit = 100
 	}
 
 	if options.Depth < 0 {
