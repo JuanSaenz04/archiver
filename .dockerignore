@@ -1,4 +1,37 @@
-*.out
-*.sh
+# Version Control
+.git
+.gitignore
+
+# IDE / Editor
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# OS Files
+Thumbs.db
+
+# Dependencies
 node_modules
+front/node_modules
+
+# Build Artifacts
 dist
+front/dist
+*.out
+bin/
+build/
+*.test
+*.prof
+
+# Application Data & Temp
+archives/
+tmp/
+.gemini/
+
+# Scripts & Config not needed in image
+*.sh
+docker-compose.yml
+*.Dockerfile
+.dockerignore
