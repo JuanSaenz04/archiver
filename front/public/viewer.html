@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="Content-Security-Policy" content="frame-src 'self' data: blob: about:;" />
     <title>Archive Viewer</title>
     <style>
       html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
       replay-web-page { height: 100%; width: 100%; display: block; }
     </style>
-    <script src="/ui.js"></script>
+    <script src="/replay/ui.js"></script>
   </head>
   <body>
     <replay-web-page
       embed="default"
-      replayBase="/"
+      replayBase="/replay/"
+      noSandbox
     ></replay-web-page>
     <script>
       const params = new URLSearchParams(window.location.search);
