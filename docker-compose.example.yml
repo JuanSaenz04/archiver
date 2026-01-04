@@ -1,0 +1,33 @@
+name: "archiver"
+
+services:
+  broker:
+    container_name: "valkey"
+    image: "valkey/valkey"
+    restart: unless-stopped
+    command:
+      - "--requirepass ${REDIS_PASS}"
+  worker:
+    container_name: "archiver-worker"
+    image: "archiver-worker:latest"
+    build:
+      dockerfile: "./Worker.Dockerfile"
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASS}@broker:6379/0"
+      ARCHIVES_DIR: "/archives"
+    volumes:
+      - "./archives:/archives"
+    restart: unless-stopped
+  api:
+    container_name: "archiver-api"
+    image: "archiver-api:latest"
+    build:
+      dockerfile: "./Api.Dockerfile"
+    environment:
+      ARCHIVES_DIR: "/archives"
+      REDIS_URL: "redis://:${REDIS_PASS}@broker:6379/0"
+    volumes:
+      - "./archives:/archives"
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT}:1080"
