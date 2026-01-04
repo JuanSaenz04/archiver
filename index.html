@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WACZ Archive Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #fafaf9;
+            --bg-secondary: #f5f5f4;
+            --bg-sidebar: #1c1917;
+            --text-primary: #1c1917;
+            --text-secondary: #57534e;
+            --text-sidebar: #e7e5e4;
+            --border-color: #e7e5e4;
+            --accent: #dc2626;
+            --accent-hover: #b91c1c;
+            --shadow: rgba(0, 0, 0, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 320px;
+            background: var(--bg-sidebar);
+            color: var(--text-sidebar);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar-header {
+            padding: 32px 24px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-title {
+            font-family: 'Crimson Pro', serif;
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+        }
+
+        .sidebar-subtitle {
+            font-size: 13px;
+            color: #a8a29e;
+            letter-spacing: 0.02em;
+        }
+
+        .archives-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 12px;
+        }
+
+        .archive-item {
+            padding: 14px 12px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .archive-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.1);
+            transform: translateX(2px);
+        }
+
+        .archive-item.active {
+            background: var(--accent);
+            border-color: var(--accent-hover);
+        }
+
+        .archive-name {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            word-break: break-all;
+        }
+
+        .archive-size {
+            font-size: 12px;
+            color: #a8a29e;
+        }
+
+        .archive-item.active .archive-size {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .empty-state {
+            padding: 48px 24px;
+            text-align: center;
+            color: #78716c;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-secondary);
+        }
+
+        .viewer-header {
+            padding: 24px 32px;
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .current-archive {
+            font-family: 'Crimson Pro', serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .viewer-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid var(--border-color);
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--text-secondary);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        .viewer-container {
+            flex: 1;
+            position: relative;
+            background: white;
+            margin: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px var(--shadow);
+        }
+
+        #replay-viewer {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            flex-direction: column;
+            color: var(--text-secondary);
+        }
+
+        .placeholder-icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+            opacity: 0.2;
+        }
+
+        .placeholder-text {
+            font-family: 'Crimson Pro', serif;
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .placeholder-subtext {
+            font-size: 14px;
+            color: #78716c;
+        }
+
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* Custom scrollbar */
+        .archives-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .archives-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .archives-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        .archives-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                z-index: 100;
+                height: 100%;
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="sidebar-title">Archives</h1>
+                <p class="sidebar-subtitle">Web Archive Collection</p>
+            </div>
+            <div class="archives-list" id="archivesList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📦</div>
+                    <p class="empty-state-text">Loading archives...</p>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="viewer-header">
+                <h2 class="current-archive" id="currentArchive">Select an archive to view</h2>
+                <div class="viewer-actions">
+                    <button class="btn" onclick="refreshArchives()">Refresh</button>
+                </div>
+            </div>
+            <div class="viewer-container">
+                <div class="placeholder" id="placeholder">
+                    <div class="placeholder-icon">🗂️</div>
+                    <p class="placeholder-text">No archive selected</p>
+                    <p class="placeholder-subtext">Choose an archive from the sidebar to begin</p>
+                </div>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p class="loading-text">Loading archive...</p>
+                </div>
+                <iframe id="replay-viewer" style="display: none;"></iframe>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentArchive = null;
+
+        async function loadArchives() {
+            try {
+                const response = await fetch('/api/archives');
+                const archives = await response.json();
+                
+                const archivesList = document.getElementById('archivesList');
+                
+                if (archives.length === 0) {
+                    archivesList.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <p class="empty-state-text">No archives found.<br>Place .wacz files in the /archives directory.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                archivesList.innerHTML = archives.map(archive => `
+                    <div class="archive-item" onclick="loadArchive('${archive.name}')">
+                        <div class="archive-name">${archive.name}</div>
+                        <div class="archive-size">${formatSize(archive.size)}</div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load archives:', error);
+                document.getElementById('archivesList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <p class="empty-state-text">Failed to load archives.<br>Please check the server connection.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function loadArchive(archiveName) {
+            currentArchive = archiveName;
+            
+            // Update UI
+            document.querySelectorAll('.archive-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+            
+            document.getElementById('currentArchive').textContent = archiveName;
+            document.getElementById('placeholder').style.display = 'none';
+            document.getElementById('loading').classList.add('active');
+            
+            // Build the full URL to the archive
+            const viewer = document.getElementById('replay-viewer');
+            const archiveUrl = `${window.location.origin}/archives/${encodeURIComponent(archiveName)}`;
+            
+            // Use ReplayWeb.page hosted viewer
+            // The viewer will fetch the archive from our server using CORS
+            viewer.src = `https://replayweb.page/?source=${encodeURIComponent(archiveUrl)}`;
+            
+            // Show viewer after brief loading
+            setTimeout(() => {
+                document.getElementById('loading').classList.remove('active');
+                viewer.style.display = 'block';
+            }, 1000);
+        }
+
+        function refreshArchives() {
+            loadArchives();
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // Load archives on page load
+        loadArchives();
+    </script>
+</body>
+</html>

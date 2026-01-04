@@ -5,8 +5,10 @@ import (
 )
 
 func (handler *Handler) SetRoutes(e *echo.Echo) {
-	e.POST("/jobs", handler.HandleNewJob)
-	e.GET("/jobs", handler.HandleGetJobs)
-	e.GET("/archives", handler.HandleGetArchives)
-	e.GET("/archives/:archiveName", handler.HandleGetArchive)
+	apiGroup := e.Group("/api")
+
+	apiGroup.POST("/jobs", handler.HandleNewJob)
+	apiGroup.GET("/jobs", handler.HandleGetJobs)
+	apiGroup.GET("/archives", handler.HandleGetArchives)
+	apiGroup.GET("/archives/:archiveName", handler.HandleGetArchive)
 }

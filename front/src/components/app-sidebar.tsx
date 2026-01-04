@@ -6,13 +6,20 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { apiClient } from "@/lib/api"
 import type { Archive, GetArchivesResponse } from "@/models/archive"
-import { useEffect, useState } from "react"
+import { File } from "lucide-react"
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
 
-export function AppSidebar() {
+interface Props {
+  onArchiveSelected: Dispatch<SetStateAction<string>>
+  selectedArchive: string
+}
+
+export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
 
   const [ archives, setArchives ] = useState<Archive[] | null >(null)
 
@@ -39,8 +46,17 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               { archives ?
-                archives.map(archive => <SidebarMenuItem>{archive.name.slice(0, -5)}</SidebarMenuItem>) :
-                "Loading..."
+                archives.map((archive, index) => (
+                <SidebarMenuItem key={index}>
+                  <SidebarMenuButton 
+                    isActive={selectedArchive === archive.name}
+                    onClick={() => {onArchiveSelected(archive.name)}}
+                  >
+                    <File />
+                    <span>{archive.name.slice(0, -5)}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                )) : "Loading..."
               }
             </SidebarMenu>
           </SidebarGroupContent>
