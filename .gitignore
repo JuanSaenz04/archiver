@@ -33,3 +33,5 @@ GEMINI.md
 dist
 
 .env
+
+docker-compose.yml
