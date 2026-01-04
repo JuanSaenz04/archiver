@@ -53,7 +53,11 @@ func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptio
 	}
 
 	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
-	dstPath := filepath.Join(archivesDir, jobID+".wacz")
+	name := options.Name + ".wacz"
+	if name == "" {
+		name = jobID + ".wacz"
+	}
+	dstPath := filepath.Join(archivesDir, name)
 
 	src, err := os.Open(srcPath)
 	if err != nil {
