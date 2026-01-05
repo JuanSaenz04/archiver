@@ -13,6 +13,26 @@ import { apiClient } from "@/lib/api"
 import type { Job, GetJobsResponse } from "@/models/job"
 import { cn } from "@/lib/utils"
 
+function JobCard({ job }: { job: Job }) {
+  return (
+    <div className="mr-2 ml-2 p-3 border rounded-md text-sm">
+      <div className="font-medium truncate" title={job.url}>{job.url}</div>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-xs text-muted-foreground font-mono">{job.id.slice(0, 8)}</span>
+        <span className={cn(
+          "text-[10px] uppercase font-bold px-2 py-0.5 rounded-full",
+          job.status === 'completed' && "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+          job.status === 'failed' && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+          job.status === 'pending' && "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+          !['completed', 'failed', 'pending'].includes(job.status) && "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+        )}>
+          {job.status}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export function JobsSheet() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [isOpen, setIsOpen] = useState(false)
@@ -67,19 +87,7 @@ export function JobsSheet() {
                 <div className="text-center text-sm text-muted-foreground mt-8">No jobs found.</div>
             ) : (
                 jobs.map((job) => (
-                    <div key={job.id} className="mr-2 ml-2 p-3 border rounded-md text-sm">
-                        <div className="font-medium truncate" title={job.url}>{job.url}</div>
-                        <div className="flex items-center justify-between mt-2">
-                             <span className="text-xs text-muted-foreground font-mono">{job.id.slice(0,8)}</span>
-                             <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                                 job.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-                                 job.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
-                                 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-                             }`}>
-                                 {job.status}
-                             </span>
-                        </div>
-                    </div>
+                    <JobCard key={job.id} job={job} />
                 ))
             )}
         </div>
