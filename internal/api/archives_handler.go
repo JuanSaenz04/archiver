@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,4 +45,23 @@ func (handler *Handler) HandleGetArchive(c echo.Context) error {
 	}
 
 	return nil
+}
+
+func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
+	archivesDir := os.Getenv("ARCHIVES_DIR")
+
+	archiveName := c.Param("archiveName")
+	archiveName = filepath.Base(archiveName)
+
+	path := filepath.Join(archivesDir, archiveName)
+
+	if err := os.Remove(path); err != nil {
+        if errors.Is(err, os.ErrNotExist) {
+            return respondWithError(http.StatusNotFound, "Archive not found", c)
+        }
+
+		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }

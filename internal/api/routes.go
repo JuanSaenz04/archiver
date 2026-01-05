@@ -19,6 +19,7 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 	apiGroup.GET("/jobs", handler.HandleGetJobs)
 	apiGroup.GET("/archives", handler.HandleGetArchives)
 	apiGroup.GET("/archives/:archiveName", handler.HandleGetArchive)
+	apiGroup.DELETE("/archives/:archiveName", handler.HandleDeleteArchive)
 
 	dist, err := fs.Sub(frontendDist, "dist")
 	if err != nil {
@@ -46,12 +47,12 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 		_, err := dist.Open(cleanPath)
 		if err == nil {
 			fileHandler.ServeHTTP(c.Response(), c.Request())
-            return nil
+			return nil
 		}
 
 		// Fallback to index.html for SPA routing
 		c.Request().URL.Path = "/"
-        fileHandler.ServeHTTP(c.Response(), c.Request())
-        return nil
+		fileHandler.ServeHTTP(c.Response(), c.Request())
+		return nil
 	})
 }
