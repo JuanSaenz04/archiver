@@ -12,6 +12,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { apiClient } from "@/lib/api"
 import type { Archive, GetArchivesResponse } from "@/models/archive"
 import { File, RefreshCw, Trash2 } from "lucide-react"
@@ -73,13 +78,20 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
               { archives ?
                 archives.map((archive, index) => (
                 <SidebarMenuItem key={index}>
-                  <SidebarMenuButton 
-                    isActive={selectedArchive === archive.name}
-                    onClick={() => {onArchiveSelected(archive.name)}}
-                  >
-                    <File />
-                    <span>{archive.name.slice(0, -5)}</span>
-                  </SidebarMenuButton>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <SidebarMenuButton 
+                        isActive={selectedArchive === archive.name}
+                        onClick={() => {onArchiveSelected(archive.name)}}
+                      >
+                        <File />
+                        <span>{archive.name.slice(0, -5)}</span>
+                      </SidebarMenuButton>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      {archive.name.slice(0, -5)}
+                    </TooltipContent>
+                  </Tooltip>
                   <SidebarMenuAction showOnHover onClick={() => deleteArchive(archive.name)}>
                     <Trash2 />
                   </SidebarMenuAction>
