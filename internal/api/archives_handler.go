@@ -2,9 +2,11 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/labstack/echo/v4"
@@ -56,9 +58,47 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 	path := filepath.Join(archivesDir, archiveName)
 
 	if err := os.Remove(path); err != nil {
-        if errors.Is(err, os.ErrNotExist) {
-            return respondWithError(http.StatusNotFound, "Archive not found", c)
-        }
+		if errors.Is(err, os.ErrNotExist) {
+			return respondWithError(http.StatusNotFound, "Archive not found", c)
+		}
+
+		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (handler *Handler) HandleModifyArchiveName(c echo.Context) error {
+	newArchive := &models.Archive{}
+
+	if err := c.Bind(newArchive); err != nil {
+		return respondWithError(http.StatusBadRequest, "Malformed request", c)
+	}
+
+	newName := newArchive.Name
+	newName = filepath.Base(newName)
+	newName = strings.ReplaceAll(newName, " ", "-")
+	if !strings.HasSuffix(newName, ".wacz") {
+		newName += ".wacz"
+	}
+
+	archivesDir := os.Getenv("ARCHIVES_DIR")
+
+	archiveName := c.Param("archiveName")
+	archiveName = filepath.Base(archiveName)
+
+	path := filepath.Join(archivesDir, archiveName)
+
+	newPath := filepath.Join(archivesDir, newName)
+
+	if _, err := os.Stat(newPath); err == nil {
+		return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newName), c)
+	}
+
+	if err := os.Rename(path, newPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return respondWithError(http.StatusNotFound, "Archive not found", c)
+		}
 
 		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
 	}

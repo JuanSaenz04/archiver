@@ -20,6 +20,7 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 	apiGroup.GET("/archives", handler.HandleGetArchives)
 	apiGroup.GET("/archives/:archiveName", handler.HandleGetArchive)
 	apiGroup.DELETE("/archives/:archiveName", handler.HandleDeleteArchive)
+	apiGroup.PUT("/archives/:archiveName", handler.HandleModifyArchiveName)
 
 	dist, err := fs.Sub(frontendDist, "dist")
 	if err != nil {

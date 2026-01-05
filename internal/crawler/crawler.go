@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 )
@@ -54,7 +55,7 @@ func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptio
 	}
 
 	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
-	name := options.Name + ".wacz"
+	name := strings.ReplaceAll(options.Name, " ", "-") + ".wacz"
 	if name == "" {
 		name = jobID + ".wacz"
 	}
