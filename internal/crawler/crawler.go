@@ -31,7 +31,8 @@ func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptio
 		"--scopeType", string(options.ScopeType),
 		"--limit", strconv.Itoa(options.PageLimit),
 		"--sizeLimit", strconv.Itoa(options.SizeLimit*1024*1024),
-		"--depth", strconv.Itoa(options.Depth))
+		"--depth", strconv.Itoa(options.Depth),
+		"--timeout", "30")
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

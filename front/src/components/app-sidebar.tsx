@@ -8,12 +8,13 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { apiClient } from "@/lib/api"
 import type { Archive, GetArchivesResponse } from "@/models/archive"
-import { File, RefreshCw } from "lucide-react"
+import { File, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
 
 interface Props {
@@ -35,6 +36,20 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
       console.error(error);
     } finally {
       setLoading(false)
+    }
+  }
+
+  const deleteArchive = async (archiveName: string) => {
+    if (!confirm(`Are you sure you want to delete ${archiveName}?`)) return
+
+    try {
+      await apiClient.delete(`/archives/${archiveName}`)
+      if (selectedArchive === archiveName) {
+        onArchiveSelected("")
+      }
+      await fetchArchives()
+    } catch (error) {
+      console.error("Failed to delete archive:", error)
     }
   }
 
@@ -65,6 +80,9 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
                     <File />
                     <span>{archive.name.slice(0, -5)}</span>
                   </SidebarMenuButton>
+                  <SidebarMenuAction showOnHover onClick={() => deleteArchive(archive.name)}>
+                    <Trash2 />
+                  </SidebarMenuAction>
                 </SidebarMenuItem>
                 )) : "Loading..."
               }
