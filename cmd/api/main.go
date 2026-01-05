@@ -29,7 +29,12 @@ func main() {
 
 	rdb.XGroupCreateMkStream(ctx, "crawl_stream", "worker_group", "$")
 
-	handler := api.NewHandler(rdb)
+	archivesDir := os.Getenv("ARCHIVES_DIR")
+	if archivesDir == "" {
+		log.Fatalln("Environment variable ARCHIVES_DIR not set")
+	}
+
+	handler := api.NewHandler(rdb, archivesDir)
 
 	e := echo.New()
 

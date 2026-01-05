@@ -13,9 +13,7 @@ import (
 )
 
 func (handler *Handler) HandleGetArchives(c echo.Context) error {
-	archivesDir := os.Getenv("ARCHIVES_DIR")
-
-	pattern := filepath.Join(archivesDir, "*.wacz")
+	pattern := filepath.Join(handler.archivesDir, "*.wacz")
 
 	files, err := filepath.Glob(pattern)
 	if err != nil {
@@ -34,12 +32,10 @@ func (handler *Handler) HandleGetArchives(c echo.Context) error {
 }
 
 func (handler *Handler) HandleGetArchive(c echo.Context) error {
-	archivesDir := os.Getenv("ARCHIVES_DIR")
-
 	archiveName := c.Param("archiveName")
 	archiveName = filepath.Base(archiveName)
 
-	path := filepath.Join(archivesDir, archiveName)
+	path := filepath.Join(handler.archivesDir, archiveName)
 
 	err := c.File(path)
 	if err != nil {
@@ -50,12 +46,10 @@ func (handler *Handler) HandleGetArchive(c echo.Context) error {
 }
 
 func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
-	archivesDir := os.Getenv("ARCHIVES_DIR")
-
 	archiveName := c.Param("archiveName")
 	archiveName = filepath.Base(archiveName)
 
-	path := filepath.Join(archivesDir, archiveName)
+	path := filepath.Join(handler.archivesDir, archiveName)
 
 	if err := os.Remove(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -82,14 +76,12 @@ func (handler *Handler) HandleModifyArchiveName(c echo.Context) error {
 		newName += ".wacz"
 	}
 
-	archivesDir := os.Getenv("ARCHIVES_DIR")
-
 	archiveName := c.Param("archiveName")
 	archiveName = filepath.Base(archiveName)
 
-	path := filepath.Join(archivesDir, archiveName)
+	path := filepath.Join(handler.archivesDir, archiveName)
 
-	newPath := filepath.Join(archivesDir, newName)
+	newPath := filepath.Join(handler.archivesDir, newName)
 
 	if _, err := os.Stat(newPath); err == nil {
 		return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newName), c)
