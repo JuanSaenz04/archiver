@@ -32,5 +32,21 @@ export const apiClient = {
       return;
     }
     return response.json();
+  },
+  put: async (endpoint: string, body: any) => {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        throw new Error(`API Error: ${response.statusText}`)
+    }
+    if (response.status === 204) {
+      return;
+    }
+    return response.json();
   }
 }

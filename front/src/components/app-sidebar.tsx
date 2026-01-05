@@ -17,9 +17,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"
 import { apiClient } from "@/lib/api"
 import type { Archive, GetArchivesResponse } from "@/models/archive"
-import { File, RefreshCw, Trash2 } from "lucide-react"
+import { File, RefreshCw, Trash2, Pencil, Check, X } from "lucide-react"
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
 
 interface Props {
@@ -31,6 +32,8 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
 
   const [ archives, setArchives ] = useState<Archive[] | null >(null)
   const [ loading, setLoading ] = useState(false)
+  const [ editingArchive, setEditingArchive ] = useState<string | null>(null)
+  const [ editValue, setEditValue ] = useState("")
 
   const fetchArchives = async () => {
     setLoading(true)
@@ -58,6 +61,37 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
     }
   }
 
+  const startEditing = (archiveName: string) => {
+    setEditingArchive(archiveName)
+    setEditValue(archiveName.slice(0, -5)) // Remove .wacz for editing
+  }
+
+  const cancelEditing = () => {
+    setEditingArchive(null)
+    setEditValue("")
+  }
+
+  const saveArchiveName = async () => {
+    if (!editingArchive || !editValue.trim()) return
+
+    try {
+      await apiClient.put(`/archives/${editingArchive}`, { name: editValue })
+      
+      // If the currently selected archive was renamed, update the selection
+      if (selectedArchive === editingArchive) {
+         // The backend likely appends .wacz, so we predict the new name
+         // This might be slightly risky if backend logic changes, but standard behavior is needed
+         onArchiveSelected(editValue + ".wacz")
+      }
+      
+      await fetchArchives()
+      cancelEditing()
+    } catch (error) {
+      console.error("Failed to rename archive:", error)
+      alert("Failed to rename archive. Name might be taken or invalid.")
+    }
+  }
+
   useEffect(() => {
     fetchArchives();
   }, [])
@@ -78,23 +112,56 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
               { archives ?
                 archives.map((archive, index) => (
                 <SidebarMenuItem key={index}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <SidebarMenuButton 
-                        isActive={selectedArchive === archive.name}
-                        onClick={() => {onArchiveSelected(archive.name)}}
+                  {editingArchive === archive.name ? (
+                     <div className="flex items-center gap-1 p-1">
+                        <Input 
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="h-7 text-xs"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveArchiveName()
+                            if (e.key === "Escape") cancelEditing()
+                          }}
+                        />
+                        <button onClick={saveArchiveName} className="p-1 hover:bg-sidebar-accent rounded-md">
+                          <Check className="size-4 text-green-500" />
+                        </button>
+                        <button onClick={cancelEditing} className="p-1 hover:bg-sidebar-accent rounded-md">
+                          <X className="size-4 text-red-500" />
+                        </button>
+                     </div>
+                  ) : (
+                    <>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <SidebarMenuButton 
+                            isActive={selectedArchive === archive.name}
+                            onClick={() => {onArchiveSelected(archive.name)}}
+                          >
+                            <File />
+                            <span>{archive.name.slice(0, -5)}</span>
+                          </SidebarMenuButton>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          {archive.name.slice(0, -5)}
+                        </TooltipContent>
+                      </Tooltip>
+                      <SidebarMenuAction 
+                        showOnHover 
+                        className="right-9"
+                        onClick={() => startEditing(archive.name)}
                       >
-                        <File />
-                        <span>{archive.name.slice(0, -5)}</span>
-                      </SidebarMenuButton>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {archive.name.slice(0, -5)}
-                    </TooltipContent>
-                  </Tooltip>
-                  <SidebarMenuAction showOnHover onClick={() => deleteArchive(archive.name)}>
-                    <Trash2 />
-                  </SidebarMenuAction>
+                        <Pencil />
+                      </SidebarMenuAction>
+                      <SidebarMenuAction 
+                        showOnHover 
+                        onClick={() => deleteArchive(archive.name)}
+                      >
+                        <Trash2 />
+                      </SidebarMenuAction>
+                    </>
+                  )}
                 </SidebarMenuItem>
                 )) : "Loading..."
               }
