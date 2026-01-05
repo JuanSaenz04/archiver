@@ -3,8 +3,13 @@ import { useState } from 'react'
 import { apiClient } from '@/lib/api'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 export const Route = createFileRoute('/create-archive')({
   component: CreateArchive,
@@ -112,9 +117,24 @@ function CreateArchive() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Scope Type */}
                     <div className="space-y-2">
-                        <label htmlFor="scopeType" className="text-sm font-medium leading-none">
-                            Scope
-                        </label>
+                        <div className="flex items-center gap-2">
+                            <label htmlFor="scopeType" className="text-sm font-medium leading-none">
+                                Scope
+                            </label>
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <Info className="size-4 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs space-y-2 p-4">
+                                    <p><span className="font-bold">page</span>: crawl only this page and no additional links.</p>
+                                    <p><span className="font-bold">page-spa</span>: crawl only this page, but load any links that include different hashtags. Useful for single-page apps that may load different content based on hashtag.</p>
+                                    <p><span className="font-bold">prefix</span>: crawl any pages in the same directory, eg. starting from https://example.com/path/page.html, crawl anything under https://example.com/path/ (default)</p>
+                                    <p><span className="font-bold">host</span>: crawl pages that share the same host.</p>
+                                    <p><span className="font-bold">domain</span>: crawl pages that share the same domain and subdomains, eg. given https://example.com/ will also crawl https://anysubdomain.example.com/</p>
+                                    <p><span className="font-bold">any</span>: crawl any and all pages linked from this page.</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
                         <select
                             id="scopeType"
                             className={cn(
@@ -141,10 +161,11 @@ function CreateArchive() {
                         <Input 
                             id="depth"
                             type="number"
-                            min="0"
+                            min="-1"
                             value={depth}
                             onChange={(e) => setDepth(Number(e.target.value))}
                         />
+                        <p className="text-[0.8rem] text-muted-foreground">-1 for unlimited</p>
                     </div>
                 </div>
 
