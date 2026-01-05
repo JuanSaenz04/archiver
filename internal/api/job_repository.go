@@ -58,9 +58,10 @@ func (repo *JobRepository) GetAllJobs(ctx context.Context) ([]models.Job, error)
 		}
 
 		jobs = append(jobs, models.Job{
-			ID:     uid,
-			URL:    result["url"],
-			Status: result["status"],
+			ID:        uid,
+			URL:       result["url"],
+			Status:    result["status"],
+			CreatedAt: result["created_at"],
 		})
 	}
 

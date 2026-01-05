@@ -38,6 +38,7 @@ func EnqueueCrawl(ctx context.Context, rdb *redis.Client, targetURL string, opti
 			"job_id":     jobID.String(),
 			"target_url": targetURL,
 			"options":    string(optsBytes),
+			"created_at": time.Now().Format(time.RFC3339),
 		},
 	}).Err()
 

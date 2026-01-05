@@ -42,14 +42,21 @@ export function JobsSheet() {
     setIsLoading(true)
     try {
       const data = await apiClient.get('/jobs') as GetJobsResponse
-      // Check if data is array (handle API potentially wrapping it or not, though code says direct)
+      
+      let jobsList: Job[] = []
       if (Array.isArray(data)) {
-        setJobs(data)
+        jobsList = data
       } else {
-        // Fallback if backend changes to { jobs: [...] } without us knowing
         // @ts-ignore
-        setJobs(data.jobs || [])
+        jobsList = data.jobs || []
       }
+
+      // Sort jobs by created_at descending (newest first)
+      const sortedJobs = [...jobsList].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+
+      setJobs(sortedJobs)
     } catch (error) {
       console.error("Failed to fetch jobs:", error)
     } finally {
