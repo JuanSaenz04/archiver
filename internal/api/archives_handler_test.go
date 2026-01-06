@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
@@ -104,5 +105,132 @@ func TestHandleGetArchive(t *testing.T) {
 		err := handler.HandleGetArchive(c)
 		assert.NoError(t, err) // Our handler catches the error and responds
 		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+}
+
+func TestHandleDeleteArchive(t *testing.T) {
+	tempDir := t.TempDir()
+	handler := &Handler{archivesDir: tempDir}
+	e := echo.New()
+
+	t.Run("Success", func(t *testing.T) {
+		archiveName := "to_delete.wacz"
+		filePath := filepath.Join(tempDir, archiveName)
+		if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+			t.Fatalf("Failed to create file: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues(archiveName)
+
+		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
+			assert.Equal(t, http.StatusNoContent, rec.Code)
+			
+			// Verify file is gone
+			_, err := os.Stat(filePath)
+			assert.True(t, os.IsNotExist(err), "File should be deleted")
+		}
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		archiveName := "non_existent.wacz"
+		req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues(archiveName)
+
+		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
+			assert.Equal(t, http.StatusNotFound, rec.Code)
+		}
+	})
+}
+
+func TestHandleModifyArchiveName(t *testing.T) {
+	tempDir := t.TempDir()
+	handler := &Handler{archivesDir: tempDir}
+	e := echo.New()
+
+	t.Run("Success", func(t *testing.T) {
+		oldName := "old.wacz"
+		newName := "new.wacz"
+		filePath := filepath.Join(tempDir, oldName)
+		os.WriteFile(filePath, []byte("content"), 0644)
+
+		body, _ := json.Marshal(map[string]string{"name": "new"})
+		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+oldName, strings.NewReader(string(body)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues(oldName)
+
+		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+			assert.Equal(t, http.StatusNoContent, rec.Code)
+			
+			// Verify old is gone and new exists
+			_, err := os.Stat(filepath.Join(tempDir, oldName))
+			assert.True(t, os.IsNotExist(err))
+			_, err = os.Stat(filepath.Join(tempDir, newName))
+			assert.NoError(t, err)
+		}
+	})
+
+	t.Run("Sanitization", func(t *testing.T) {
+		oldName := "san.wacz"
+		// "my new name" -> "my-new-name.wacz"
+		expectedName := "my-new-name.wacz"
+		filePath := filepath.Join(tempDir, oldName)
+		os.WriteFile(filePath, []byte("content"), 0644)
+
+		body, _ := json.Marshal(map[string]string{"name": "my new name"})
+		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+oldName, strings.NewReader(string(body)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues(oldName)
+
+		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+			assert.Equal(t, http.StatusNoContent, rec.Code)
+			_, err := os.Stat(filepath.Join(tempDir, expectedName))
+			assert.NoError(t, err)
+		}
+	})
+
+	t.Run("Conflict", func(t *testing.T) {
+		oldName := "source.wacz"
+		existingName := "existing.wacz"
+		os.WriteFile(filepath.Join(tempDir, oldName), []byte("content"), 0644)
+		os.WriteFile(filepath.Join(tempDir, existingName), []byte("content"), 0644)
+
+		body, _ := json.Marshal(map[string]string{"name": "existing.wacz"})
+		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+oldName, strings.NewReader(string(body)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues(oldName)
+
+		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+			assert.Equal(t, http.StatusConflict, rec.Code)
+		}
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		body, _ := json.Marshal(map[string]string{"name": "really-missing.wacz"})
+		req := httptest.NewRequest(http.MethodPut, "/api/archives/missing.wacz", strings.NewReader(string(body)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues("missing.wacz")
+
+		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+			assert.Equal(t, http.StatusNotFound, rec.Code)
+		}
 	})
 }
