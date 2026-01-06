@@ -151,9 +151,10 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
                           <SidebarMenuButton 
                             isActive={selectedArchive === archive.name}
                             onClick={() => {onArchiveSelected(archive.name)}}
+                            className="pr-14!"
                           >
                             <File />
-                            <span>{archive.name.slice(0, -5)}</span>
+                            <span className="truncate min-w-0">{archive.name.slice(0, -5)}</span>
                           </SidebarMenuButton>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -162,7 +163,7 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
                       </Tooltip>
                       <SidebarMenuAction 
                         showOnHover 
-                        className="right-9"
+                        className="right-7"
                         onClick={() => startEditing(archive.name)}
                       >
                         <Pencil />
