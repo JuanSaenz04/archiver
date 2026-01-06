@@ -34,6 +34,11 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
   const [ loading, setLoading ] = useState(false)
   const [ editingArchive, setEditingArchive ] = useState<string | null>(null)
   const [ editValue, setEditValue ] = useState("")
+  const [ searchQuery, setSearchQuery ] = useState("")
+
+  const filteredArchives = archives?.filter(archive => 
+    archive.name.toLowerCase().includes(searchQuery.toLowerCase())
+  ) ?? null
 
   const fetchArchives = async () => {
     setLoading(true)
@@ -100,6 +105,14 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
     <Sidebar className="absolute h-full border-r">
       <SidebarHeader>
         <h2 className="font-bold text-center pt-2">Archives</h2>
+        <div className="px-2 pb-2">
+          <Input 
+            placeholder="Search archives..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-8 text-xs"
+          />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -109,8 +122,8 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
           </SidebarGroupAction>
           <SidebarGroupContent>
             <SidebarMenu>
-              { archives ?
-                archives.map((archive, index) => (
+              { filteredArchives ?
+                filteredArchives.map((archive, index) => (
                 <SidebarMenuItem key={index}>
                   {editingArchive === archive.name ? (
                      <div className="flex items-center gap-1 p-1">
