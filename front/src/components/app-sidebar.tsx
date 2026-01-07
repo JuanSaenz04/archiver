@@ -151,7 +151,7 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
                           <SidebarMenuButton 
                             isActive={selectedArchive === archive.name}
                             onClick={() => {onArchiveSelected(archive.name)}}
-                            className="hover:pr-14!"
+                            className="hover:pr-14! data-[active=true]:pr-14!"
                           >
                             <File />
                             <span className="truncate min-w-0">{archive.name.slice(0, -5)}</span>
