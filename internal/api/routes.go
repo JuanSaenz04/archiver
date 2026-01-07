@@ -7,12 +7,21 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 //go:embed dist
 var frontendDist embed.FS
 
 func (handler *Handler) SetRoutes(e *echo.Echo) {
+	// Enable Gzip compression for frontend assets and JSON API,
+	// but skip it for archive downloads to support HTTP Range requests.
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Skipper: func(c echo.Context) bool {
+			return strings.HasPrefix(c.Request().URL.Path, "/api/archives/")
+		},
+	}))
+
 	apiGroup := e.Group("/api")
 
 	apiGroup.POST("/jobs", handler.HandleNewJob)
