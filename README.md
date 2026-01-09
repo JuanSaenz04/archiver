@@ -45,7 +45,10 @@ Once the containers are running, the user interface will be accessible at:
 
 `http://localhost:1080` (or your configured `APP_PORT`)
 
-> **Note**: Ideally, this application should be served behind a reverse proxy (such as Nginx, Caddy, or Traefik) to handle HTTPS termination, as the application itself only serves HTTP.
+> [!IMPORTANT]
+> **Security Note**: This application does not include built-in authentication or HTTPS. It is strongly recommended to:
+> 1. Serve it behind a **Reverse Proxy** (like Nginx, Caddy, or Traefik) for HTTPS termination.
+> 2. Use an **Authentication Proxy** (such as [Authelia](https://www.authelia.com/), [Authentik](https://goauthentik.io/), or [Tinyauth](https://tinyauth.app/)) to provide a login layer before accessing the application.
 
 ## License
 This project is licensed under the AGPLv3 License - see the [LICENSE](LICENSE) file for details.
