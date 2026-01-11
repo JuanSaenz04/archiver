@@ -15,6 +15,7 @@ services:
     environment:
       REDIS_URL: "redis://:${REDIS_PASS}@broker:6379/0"
       ARCHIVES_DIR: "/archives"
+      CRAWLER_TIMEOUT: "30"
     volumes:
       - "./archives:/archives"
     restart: unless-stopped
