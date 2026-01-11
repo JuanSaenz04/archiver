@@ -23,7 +23,7 @@ cp .env.example .env
 
 ### 2. Environment Setup
 
-Open the `.env` file and configure the necessary variables.
+Open the `.env` file and configure the necessary variables. For a full list of available options, see the [Environment Variables documentation](docs/env_variables.md).
 
 *   **Redis Password**: You **must** set a secure password for `REDIS_PASS`. You can generate a strong random password using `openssl`:
 
