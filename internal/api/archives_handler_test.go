@@ -71,7 +71,7 @@ func TestHandleGetArchive(t *testing.T) {
 	tempDir := t.TempDir()
 	archiveName := "test.wacz"
 	content := []byte("dummy wacz content")
-	
+
 	err := os.WriteFile(filepath.Join(tempDir, archiveName), content, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create dummy archive: %v", err)
@@ -128,7 +128,7 @@ func TestHandleDeleteArchive(t *testing.T) {
 
 		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
-			
+
 			// Verify file is gone
 			_, err := os.Stat(filePath)
 			assert.True(t, os.IsNotExist(err), "File should be deleted")
@@ -170,7 +170,7 @@ func TestHandleModifyArchiveName(t *testing.T) {
 
 		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
-			
+
 			// Verify old is gone and new exists
 			_, err := os.Stat(filepath.Join(tempDir, oldName))
 			assert.True(t, os.IsNotExist(err))

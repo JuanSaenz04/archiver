@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/JuanSaenz04/archiver/internal/crawler"
@@ -30,6 +31,16 @@ func main() {
 			log.Printf("Error closing redis client: %v", err)
 		}
 	}()
+
+	timeoutEnv := os.Getenv("CRAWLER_TIMEOUT")
+
+	timeoutSeconds, err := strconv.Atoi(timeoutEnv)
+
+	if err != nil {
+		timeoutSeconds = 30
+	}
+
+	crawler := crawler.NewCrawler(timeoutSeconds)
 
 	queue.StartWorker(ctx, rdb, crawler.Run)
 }

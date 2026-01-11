@@ -97,7 +97,7 @@ func TestHandleGetJobs(t *testing.T) {
 
 		if assert.NoError(t, handler.HandleGetJobs(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
-			
+
 			var jobs []models.Job
 			err := json.Unmarshal(rec.Body.Bytes(), &jobs)
 			assert.NoError(t, err)
@@ -111,7 +111,7 @@ func TestHandleGetJobs(t *testing.T) {
 		jobID2 := "550e8400-e29b-41d4-a716-446655440001"
 
 		mr.SAdd("jobs:index", jobID1, jobID2)
-		
+
 		mr.HSet("job:"+jobID1, "url", "https://site1.com")
 		mr.HSet("job:"+jobID1, "status", "pending")
 		mr.HSet("job:"+jobID1, "created_at", "2023-01-01T00:00:00Z")
@@ -137,8 +137,12 @@ func TestHandleGetJobs(t *testing.T) {
 			foundSite1 := false
 			foundSite2 := false
 			for _, j := range jobs {
-				if j.URL == "https://site1.com" { foundSite1 = true }
-				if j.URL == "https://site2.com" { foundSite2 = true }
+				if j.URL == "https://site1.com" {
+					foundSite1 = true
+				}
+				if j.URL == "https://site2.com" {
+					foundSite2 = true
+				}
 			}
 			assert.True(t, foundSite1)
 			assert.True(t, foundSite2)

@@ -14,8 +14,18 @@ import (
 	"github.com/JuanSaenz04/archiver/internal/models"
 )
 
+type Crawler struct {
+	timeoutInSeconds int
+}
+
+func NewCrawler(timeoutInSeconds int) *Crawler {
+	return &Crawler{
+		timeoutInSeconds: timeoutInSeconds,
+	}
+}
+
 // Run executes the crawler for a specific job.
-func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptions) error {
+func (crawler *Crawler) Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptions) error {
 	fmt.Printf("Received job with ID %s\n", jobID)
 
 	setDefaultValuesIfEmpty(&options)
@@ -33,7 +43,7 @@ func Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptio
 		"--limit", strconv.Itoa(options.PageLimit),
 		"--sizeLimit", strconv.Itoa(options.SizeLimit*1024*1024),
 		"--depth", strconv.Itoa(options.Depth),
-		"--timeout", "30")
+		"--timeout", strconv.Itoa(crawler.timeoutInSeconds))
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
