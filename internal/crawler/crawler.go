@@ -32,6 +32,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID, targetURL string, option
 
 	cmd := exec.CommandContext(
 		ctx,
+		"xvfb-run", "--auto-servernum", "--server-args=-screen 0 1280x1024x24",
 		"node", "/app/dist/main.js", "crawl",
 		"--url", targetURL,
 		"--generateWACZ",
