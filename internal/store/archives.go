@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,12 @@ import (
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/google/uuid"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
+
+var ErrArchiveNotFound = errors.New("archive not found")
+var ErrArchiveNameConflict = errors.New("archive name conflict")
 
 func (s *ArchiveStore) SyncFromDisk(ctx context.Context, archivesDir string) error {
 	files, err := os.ReadDir(archivesDir)
@@ -126,7 +132,11 @@ INSERT INTO archives (id, name, description, source_url, created_at) VALUES (?, 
 	`
 
 	if _, err := tx.ExecContext(ctx, archiveQuery, a.ID, a.Name, a.Description, a.SourceURL, a.CreatedAt); err != nil {
-		return err
+		if isUniqueConstraint(err) {
+			return ErrArchiveNameConflict
+		} else {
+			return err
+		}
 	}
 
 	const tagQuery = `
@@ -148,8 +158,17 @@ UPDATE archives SET name = ?
 WHERE name = ?;
 	`
 
-	if _, err := s.db.ExecContext(ctx, query, newName, oldName); err != nil {
+	if res, err := s.db.ExecContext(ctx, query, newName, oldName); err != nil {
+		if isUniqueConstraint(err) {
+			return ErrArchiveNameConflict
+		}
+
 		return err
+	} else {
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return ErrArchiveNotFound
+		}
 	}
 
 	return nil
@@ -170,6 +189,10 @@ WHERE name = ?;
 
 	var id uuid.UUID
 	if err := tx.QueryRowContext(ctx, getIDQuery, name).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrArchiveNotFound
+		}
+
 		return err
 	}
 
@@ -178,11 +201,12 @@ UPDATE archives SET description = ?
 WHERE name = ?;
 	`
 
-	if result, err := tx.ExecContext(ctx, changeDescriptionQuery, description, name); err != nil {
+	if res, err := tx.ExecContext(ctx, changeDescriptionQuery, description, name); err != nil {
 		return err
 	} else {
-		if rows, _ := result.RowsAffected(); rows == 0 {
-			return sql.ErrNoRows
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return ErrArchiveNotFound
 		}
 	}
 
@@ -214,5 +238,36 @@ INSERT INTO tags (archive_id, tag) VALUES (?, ?);
 }
 
 func (s *ArchiveStore) Delete(ctx context.Context, name string) error {
+	const deleteQuery = `
+DELETE FROM archives
+WHERE name = ?;
+	`
+
+	if res, err := s.db.ExecContext(ctx, deleteQuery, name); err != nil {
+		return err
+	} else {
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return ErrArchiveNotFound
+		}
+	}
+
 	return nil
+}
+
+func isUniqueConstraint(err error) bool {
+	var sqlErr *sqlite.Error
+	if !errors.As(err, &sqlErr) {
+		return false
+	}
+
+	if sqlErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		return true
+	}
+
+	if sqlErr.Code() == sqlite3.SQLITE_CONSTRAINT {
+		return true
+	}
+
+	return false
 }

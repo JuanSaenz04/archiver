@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -98,6 +98,36 @@ func TestInsertAndList(t *testing.T) {
 
 	if got := byName[second.Name]; len(got.Tags) != 1 || got.Tags[0] != "tech" {
 		t.Fatalf("unexpected second archive tags: %#v", got.Tags)
+	}
+}
+
+func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	createdAt := time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)
+
+	if err := s.Insert(ctx, models.Archive{
+		ID:          uuid.New(),
+		Name:        "dup.wacz",
+		Description: "first",
+		SourceURL:   "https://example.com/one",
+		Tags:        []string{"a"},
+		CreatedAt:   createdAt,
+	}); err != nil {
+		t.Fatalf("insert first archive: %v", err)
+	}
+
+	err := s.Insert(ctx, models.Archive{
+		ID:          uuid.New(),
+		Name:        "dup.wacz",
+		Description: "second",
+		SourceURL:   "https://example.com/two",
+		Tags:        []string{"b"},
+		CreatedAt:   createdAt.Add(time.Minute),
+	})
+
+	if !errors.Is(err, ErrArchiveNameConflict) {
+		t.Fatalf("expected ErrArchiveNameConflict, got %v", err)
 	}
 }
 
@@ -277,14 +307,15 @@ func TestRename(t *testing.T) {
 		}
 
 		err := s.Rename(ctx, "new.wacz", "other.wacz")
-		if err == nil {
-			t.Fatal("expected conflict error when renaming to existing name")
+		if !errors.Is(err, ErrArchiveNameConflict) {
+			t.Fatalf("expected ErrArchiveNameConflict, got %v", err)
 		}
 	})
 
 	t.Run("missing_source", func(t *testing.T) {
-		if err := s.Rename(ctx, "missing.wacz", "unused.wacz"); err != nil {
-			t.Fatalf("rename missing source should not fail, got: %v", err)
+		err := s.Rename(ctx, "missing.wacz", "unused.wacz")
+		if !errors.Is(err, ErrArchiveNotFound) {
+			t.Fatalf("expected ErrArchiveNotFound, got %v", err)
 		}
 
 		var count int
@@ -376,11 +407,54 @@ func TestUpdateMetadata(t *testing.T) {
 
 	t.Run("missing_archive_returns_not_found", func(t *testing.T) {
 		err := s.UpdateMetadata(ctx, "missing.wacz", "irrelevant", []string{"x"})
-		if err == nil {
-			t.Fatal("expected error for missing archive")
+		if !errors.Is(err, ErrArchiveNotFound) {
+			t.Fatalf("expected ErrArchiveNotFound, got %v", err)
 		}
-		if err != sql.ErrNoRows {
-			t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	})
+}
+
+func TestDeleteErrors(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	t.Run("missing_archive_returns_not_found", func(t *testing.T) {
+		err := s.Delete(ctx, "missing.wacz")
+		if !errors.Is(err, ErrArchiveNotFound) {
+			t.Fatalf("expected ErrArchiveNotFound, got %v", err)
+		}
+	})
+
+	t.Run("existing_archive_deletes_successfully", func(t *testing.T) {
+		archiveID := uuid.New()
+		if err := s.Insert(ctx, models.Archive{
+			ID:          archiveID,
+			Name:        "delete-me.wacz",
+			Description: "to delete",
+			SourceURL:   "https://example.com/delete",
+			Tags:        []string{"x", "y"},
+			CreatedAt:   time.Date(2026, 3, 29, 16, 0, 0, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("insert archive: %v", err)
+		}
+
+		if err := s.Delete(ctx, "delete-me.wacz"); err != nil {
+			t.Fatalf("delete archive: %v", err)
+		}
+
+		var archiveCount int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE id = ?;", archiveID).Scan(&archiveCount); err != nil {
+			t.Fatalf("count deleted archive rows: %v", err)
+		}
+		if archiveCount != 0 {
+			t.Fatalf("expected archive row deleted, got count=%d", archiveCount)
+		}
+
+		var tagCount int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM tags WHERE archive_id = ?;", archiveID).Scan(&tagCount); err != nil {
+			t.Fatalf("count deleted tag rows: %v", err)
+		}
+		if tagCount != 0 {
+			t.Fatalf("expected cascade delete on tags, got count=%d", tagCount)
 		}
 	})
 }
