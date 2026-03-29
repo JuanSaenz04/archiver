@@ -1,0 +1,223 @@
+package store
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/JuanSaenz04/archiver/internal/models"
+	"github.com/google/uuid"
+)
+
+func newTestStore(t *testing.T) *ArchiveStore {
+	t.Helper()
+
+	dbPath := "file:" + uuid.NewString() + "?mode=memory&cache=shared"
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+
+	s.db.SetMaxOpenConns(1)
+	s.db.SetMaxIdleConns(1)
+
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Fatalf("close store: %v", err)
+		}
+	})
+
+	if err := s.RunMigrations(); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	return s
+}
+
+func TestInsertAndList(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	firstID := uuid.New()
+	secondID := uuid.New()
+
+	first := models.Archive{
+		ID:          firstID,
+		Name:        "first.wacz",
+		Description: "first archive",
+		SourceURL:   "https://example.com/first",
+		Tags:        []string{"news", "2026"},
+		CreatedAt:   time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC),
+	}
+
+	second := models.Archive{
+		ID:          secondID,
+		Name:        "second.wacz",
+		Description: "second archive",
+		SourceURL:   "https://example.com/second",
+		Tags:        []string{"tech"},
+		CreatedAt:   time.Date(2026, 3, 29, 11, 0, 0, 0, time.UTC),
+	}
+
+	if err := s.Insert(ctx, first); err != nil {
+		t.Fatalf("insert first archive: %v", err)
+	}
+
+	if err := s.Insert(ctx, second); err != nil {
+		t.Fatalf("insert second archive: %v", err)
+	}
+
+	archives, err := s.List(ctx)
+	if err != nil {
+		t.Fatalf("list archives: %v", err)
+	}
+
+	if len(archives) != 2 {
+		t.Fatalf("expected 2 archives, got %d", len(archives))
+	}
+
+	byName := make(map[string]models.Archive, len(archives))
+	for _, archive := range archives {
+		byName[archive.Name] = archive
+	}
+
+	if got := byName[first.Name]; got.ID != first.ID {
+		t.Fatalf("first archive id mismatch: got %s, want %s", got.ID, first.ID)
+	}
+
+	if got := byName[first.Name]; len(got.Tags) != 2 {
+		t.Fatalf("first archive tags length mismatch: got %d, want 2", len(got.Tags))
+	}
+
+	if got := byName[second.Name]; got.ID != second.ID {
+		t.Fatalf("second archive id mismatch: got %s, want %s", got.ID, second.ID)
+	}
+
+	if got := byName[second.Name]; len(got.Tags) != 1 || got.Tags[0] != "tech" {
+		t.Fatalf("unexpected second archive tags: %#v", got.Tags)
+	}
+}
+
+func TestSyncFromDiskInsertsMissingWACZFiles(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	archivesDir := t.TempDir()
+
+	firstPath := filepath.Join(archivesDir, "a.wacz")
+	secondPath := filepath.Join(archivesDir, "b.WACZ")
+	ignoredPath := filepath.Join(archivesDir, "ignore.txt")
+
+	if err := os.WriteFile(firstPath, []byte("one"), 0644); err != nil {
+		t.Fatalf("write first file: %v", err)
+	}
+	if err := os.WriteFile(secondPath, []byte("two"), 0644); err != nil {
+		t.Fatalf("write second file: %v", err)
+	}
+	if err := os.WriteFile(ignoredPath, []byte("ignored"), 0644); err != nil {
+		t.Fatalf("write ignored file: %v", err)
+	}
+
+	mtime := time.Date(2025, 12, 15, 8, 30, 0, 0, time.UTC)
+	if err := os.Chtimes(firstPath, mtime, mtime); err != nil {
+		t.Fatalf("set file time: %v", err)
+	}
+
+	if err := s.SyncFromDisk(ctx, archivesDir); err != nil {
+		t.Fatalf("sync from disk: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives;").Scan(&count); err != nil {
+		t.Fatalf("count archives: %v", err)
+	}
+
+	if count != 2 {
+		t.Fatalf("expected 2 archives after sync, got %d", count)
+	}
+
+	var createdAt time.Time
+	if err := s.db.QueryRowContext(ctx, "SELECT created_at FROM archives WHERE name = ?;", "a.wacz").Scan(&createdAt); err != nil {
+		t.Fatalf("read created_at for a.wacz: %v", err)
+	}
+
+	if !createdAt.Equal(mtime) {
+		t.Fatalf("created_at mismatch: got %s, want %s", createdAt.UTC(), mtime.UTC())
+	}
+
+	if err := s.SyncFromDisk(ctx, archivesDir); err != nil {
+		t.Fatalf("sync from disk second run: %v", err)
+	}
+
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives;").Scan(&count); err != nil {
+		t.Fatalf("count archives second run: %v", err)
+	}
+
+	if count != 2 {
+		t.Fatalf("expected 2 archives after second sync, got %d", count)
+	}
+}
+
+func TestSyncFromDiskSkipsAlreadyInsertedFiles(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	archivesDir := t.TempDir()
+	existingName := "existing.wacz"
+	newName := "new.wacz"
+
+	existingPath := filepath.Join(archivesDir, existingName)
+	newPath := filepath.Join(archivesDir, newName)
+
+	if err := os.WriteFile(existingPath, []byte("existing"), 0644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+	if err := os.WriteFile(newPath, []byte("new"), 0644); err != nil {
+		t.Fatalf("write new file: %v", err)
+	}
+
+	existingID := uuid.New()
+	existingCreatedAt := time.Date(2024, 7, 10, 9, 0, 0, 0, time.UTC)
+
+	if err := s.Insert(ctx, models.Archive{
+		ID:          existingID,
+		Name:        existingName,
+		Description: "already in db",
+		SourceURL:   "https://example.com/existing",
+		Tags:        []string{"keep"},
+		CreatedAt:   existingCreatedAt,
+	}); err != nil {
+		t.Fatalf("insert existing archive: %v", err)
+	}
+
+	if err := s.SyncFromDisk(ctx, archivesDir); err != nil {
+		t.Fatalf("sync from disk: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives;").Scan(&count); err != nil {
+		t.Fatalf("count archives: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 archives after sync, got %d", count)
+	}
+
+	var gotID uuid.UUID
+	var gotDescription string
+	var gotCreatedAt time.Time
+	if err := s.db.QueryRowContext(ctx, "SELECT id, description, created_at FROM archives WHERE name = ?;", existingName).Scan(&gotID, &gotDescription, &gotCreatedAt); err != nil {
+		t.Fatalf("read existing archive row: %v", err)
+	}
+
+	if gotID != existingID {
+		t.Fatalf("existing archive id changed: got %s, want %s", gotID, existingID)
+	}
+	if gotDescription != "already in db" {
+		t.Fatalf("existing archive description changed: got %q", gotDescription)
+	}
+	if !gotCreatedAt.Equal(existingCreatedAt) {
+		t.Fatalf("existing archive created_at changed: got %s, want %s", gotCreatedAt.UTC(), existingCreatedAt.UTC())
+	}
+}
