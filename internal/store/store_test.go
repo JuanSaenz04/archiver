@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +21,7 @@ func newTestStore(t *testing.T) *ArchiveStore {
 		t.Fatalf("open store: %v", err)
 	}
 
-	s.db.SetMaxOpenConns(1)
+	s.db.SetMaxOpenConns(5)
 	s.db.SetMaxIdleConns(1)
 
 	t.Cleanup(func() {
@@ -293,6 +294,93 @@ func TestRename(t *testing.T) {
 
 		if count != 0 {
 			t.Fatalf("expected no row for unused name, got count=%d", count)
+		}
+	})
+}
+
+func TestUpdateMetadata(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	archiveID := uuid.New()
+	createdAt := time.Date(2026, 3, 29, 14, 0, 0, 0, time.UTC)
+
+	if err := s.Insert(ctx, models.Archive{
+		ID:          archiveID,
+		Name:        "meta.wacz",
+		Description: "old description",
+		SourceURL:   "https://example.com/meta",
+		Tags:        []string{"old", "tags"},
+		CreatedAt:   createdAt,
+	}); err != nil {
+		t.Fatalf("insert archive: %v", err)
+	}
+
+	t.Run("updates_description_and_replaces_tags", func(t *testing.T) {
+		if err := s.UpdateMetadata(ctx, "meta.wacz", "new description", []string{"news", "2026"}); err != nil {
+			t.Fatalf("update metadata: %v", err)
+		}
+
+		var description string
+		if err := s.db.QueryRowContext(ctx, "SELECT description FROM archives WHERE name = ?;", "meta.wacz").Scan(&description); err != nil {
+			t.Fatalf("read description: %v", err)
+		}
+
+		if description != "new description" {
+			t.Fatalf("description mismatch: got %q, want %q", description, "new description")
+		}
+
+		rows, err := s.db.QueryContext(ctx, "SELECT tag FROM tags WHERE archive_id = ?;", archiveID)
+		if err != nil {
+			t.Fatalf("query tags: %v", err)
+		}
+		defer rows.Close()
+
+		gotTags := make(map[string]struct{})
+		for rows.Next() {
+			var tag string
+			if err := rows.Scan(&tag); err != nil {
+				t.Fatalf("scan tag: %v", err)
+			}
+			gotTags[tag] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate tags: %v", err)
+		}
+
+		if len(gotTags) != 2 {
+			t.Fatalf("expected 2 tags, got %d", len(gotTags))
+		}
+		if _, ok := gotTags["news"]; !ok {
+			t.Fatalf("missing tag %q", "news")
+		}
+		if _, ok := gotTags["2026"]; !ok {
+			t.Fatalf("missing tag %q", "2026")
+		}
+	})
+
+	t.Run("empty_tags_clears_existing_tags", func(t *testing.T) {
+		if err := s.UpdateMetadata(ctx, "meta.wacz", "desc without tags", []string{}); err != nil {
+			t.Fatalf("update metadata with empty tags: %v", err)
+		}
+
+		var count int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM tags WHERE archive_id = ?;", archiveID).Scan(&count); err != nil {
+			t.Fatalf("count tags: %v", err)
+		}
+
+		if count != 0 {
+			t.Fatalf("expected 0 tags after clearing, got %d", count)
+		}
+	})
+
+	t.Run("missing_archive_returns_not_found", func(t *testing.T) {
+		err := s.UpdateMetadata(ctx, "missing.wacz", "irrelevant", []string{"x"})
+		if err == nil {
+			t.Fatal("expected error for missing archive")
+		}
+		if err != sql.ErrNoRows {
+			t.Fatalf("expected sql.ErrNoRows, got %v", err)
 		}
 	})
 }

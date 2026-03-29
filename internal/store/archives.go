@@ -156,7 +156,61 @@ WHERE name = ?;
 }
 
 func (s *ArchiveStore) UpdateMetadata(ctx context.Context, name, description string, tags []string) error {
-	return nil
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	const getIDQuery = `
+SELECT id
+FROM archives
+WHERE name = ?;
+	`
+
+	var id uuid.UUID
+	if err := tx.QueryRowContext(ctx, getIDQuery, name).Scan(&id); err != nil {
+		return err
+	}
+
+	const changeDescriptionQuery = `
+UPDATE archives SET description = ?
+WHERE name = ?;
+	`
+
+	if result, err := tx.ExecContext(ctx, changeDescriptionQuery, description, name); err != nil {
+		return err
+	} else {
+		if rows, _ := result.RowsAffected(); rows == 0 {
+			return sql.ErrNoRows
+		}
+	}
+
+	const deleteOldTagsQuery = `
+DELETE FROM tags
+WHERE archive_id = ?;
+	`
+	if _, err := tx.ExecContext(ctx, deleteOldTagsQuery, id); err != nil {
+		return err
+	}
+
+	const addNewTagQuery = `
+INSERT INTO tags (archive_id, tag) VALUES (?, ?);
+	`
+
+	stmt, err := tx.PrepareContext(ctx, addNewTagQuery)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, tag := range tags {
+		if _, err := stmt.ExecContext(ctx, id, tag); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *ArchiveStore) Delete(ctx context.Context, name string) error {
