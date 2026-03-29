@@ -221,3 +221,78 @@ func TestSyncFromDiskSkipsAlreadyInsertedFiles(t *testing.T) {
 		t.Fatalf("existing archive created_at changed: got %s, want %s", gotCreatedAt.UTC(), existingCreatedAt.UTC())
 	}
 }
+
+func TestRename(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	createdAt := time.Date(2026, 3, 29, 12, 0, 0, 0, time.UTC)
+
+	if err := s.Insert(ctx, models.Archive{
+		ID:          uuid.New(),
+		Name:        "old.wacz",
+		Description: "to rename",
+		SourceURL:   "https://example.com/old",
+		Tags:        []string{"one", "two"},
+		CreatedAt:   createdAt,
+	}); err != nil {
+		t.Fatalf("insert old archive: %v", err)
+	}
+
+	t.Run("success", func(t *testing.T) {
+		if err := s.Rename(ctx, "old.wacz", "new.wacz"); err != nil {
+			t.Fatalf("rename archive: %v", err)
+		}
+
+		var oldCount int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE name = ?;", "old.wacz").Scan(&oldCount); err != nil {
+			t.Fatalf("count old name: %v", err)
+		}
+
+		if oldCount != 0 {
+			t.Fatalf("expected old name to be removed, got count=%d", oldCount)
+		}
+
+		var newCount int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE name = ?;", "new.wacz").Scan(&newCount); err != nil {
+			t.Fatalf("count new name: %v", err)
+		}
+
+		if newCount != 1 {
+			t.Fatalf("expected new name to exist once, got count=%d", newCount)
+		}
+	})
+
+	t.Run("conflict", func(t *testing.T) {
+		if err := s.Insert(ctx, models.Archive{
+			ID:          uuid.New(),
+			Name:        "other.wacz",
+			Description: "existing target",
+			SourceURL:   "https://example.com/other",
+			Tags:        []string{},
+			CreatedAt:   createdAt,
+		}); err != nil {
+			t.Fatalf("insert other archive: %v", err)
+		}
+
+		err := s.Rename(ctx, "new.wacz", "other.wacz")
+		if err == nil {
+			t.Fatal("expected conflict error when renaming to existing name")
+		}
+	})
+
+	t.Run("missing_source", func(t *testing.T) {
+		if err := s.Rename(ctx, "missing.wacz", "unused.wacz"); err != nil {
+			t.Fatalf("rename missing source should not fail, got: %v", err)
+		}
+
+		var count int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE name = ?;", "unused.wacz").Scan(&count); err != nil {
+			t.Fatalf("count unused name: %v", err)
+		}
+
+		if count != 0 {
+			t.Fatalf("expected no row for unused name, got count=%d", count)
+		}
+	})
+}

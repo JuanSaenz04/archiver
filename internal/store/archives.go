@@ -143,6 +143,15 @@ INSERT INTO tags (archive_id, tag) VALUES (?, ?)
 }
 
 func (s *ArchiveStore) Rename(ctx context.Context, oldName, newName string) error {
+	const query = `
+UPDATE archives SET name = ?
+WHERE name = ?;
+	`
+
+	if _, err := s.db.ExecContext(ctx, query, newName, oldName); err != nil {
+		return err
+	}
+
 	return nil
 }
 
