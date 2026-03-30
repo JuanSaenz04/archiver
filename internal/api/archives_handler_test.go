@@ -150,6 +150,25 @@ func TestHandleGetArchive(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusNotFound, rec.Code)
 	})
+
+	t.Run("SanitizesArchiveName", func(t *testing.T) {
+		sanitizedName := "test-archive.wacz"
+		sanitizedContent := []byte("sanitized archive content")
+		if err := os.WriteFile(filepath.Join(tempDir, sanitizedName), sanitizedContent, 0644); err != nil {
+			t.Fatalf("failed to create sanitized archive: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/archives/test%20archive", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues("test archive")
+
+		if assert.NoError(t, handler.HandleGetArchive(c)) {
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, sanitizedContent, rec.Body.Bytes())
+		}
+	})
 }
 
 func TestHandleDeleteArchive(t *testing.T) {

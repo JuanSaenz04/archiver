@@ -9,8 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 
+	"github.com/JuanSaenz04/archiver/internal/archiveutil"
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
 )
@@ -69,10 +69,11 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	}
 
 	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
-	name := strings.ReplaceAll(archive.Name, " ", "-") + ".wacz"
-	if name == "" {
+	name, ok := archiveutil.NormalizeArchiveName(archive.Name)
+	if !ok {
 		name = jobID + ".wacz"
 	}
+	archive.Name = name
 	dstPath := filepath.Join(archivesDir, name)
 
 	src, err := os.Open(srcPath)

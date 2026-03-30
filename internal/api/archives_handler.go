@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/JuanSaenz04/archiver/internal/archiveutil"
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/labstack/echo/v4"
@@ -29,8 +29,10 @@ func (handler *Handler) HandleGetArchives(c echo.Context) error {
 }
 
 func (handler *Handler) HandleGetArchive(c echo.Context) error {
-	archiveName := c.Param("archiveName")
-	archiveName = filepath.Base(archiveName)
+	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
+	if !ok {
+		return respondWithError(http.StatusNotFound, "Archive not found", c)
+	}
 
 	path := filepath.Join(handler.archivesDir, archiveName)
 
@@ -46,8 +48,10 @@ func (handler *Handler) HandleGetArchive(c echo.Context) error {
 }
 
 func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
-	archiveName := c.Param("archiveName")
-	archiveName = filepath.Base(archiveName)
+	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
+	if !ok {
+		return respondWithError(http.StatusNotFound, "Archive not found", c)
+	}
 
 	path := filepath.Join(handler.archivesDir, archiveName)
 
@@ -101,15 +105,16 @@ func (handler *Handler) HandleModifyArchiveName(c echo.Context) error {
 		return respondWithError(http.StatusBadRequest, "Malformed request", c)
 	}
 
-	newName := newArchive.Name
-	newName = filepath.Base(newName)
-	newName = strings.ReplaceAll(newName, " ", "-")
-	if !strings.HasSuffix(newName, ".wacz") {
-		newName += ".wacz"
+	newName, ok := archiveutil.NormalizeArchiveName(newArchive.Name)
+	if !ok {
+		slog.Warn("invalid archive rename request", "requested_name", newArchive.Name)
+		return respondWithError(http.StatusBadRequest, "Malformed request", c)
 	}
 
-	archiveName := c.Param("archiveName")
-	archiveName = filepath.Base(archiveName)
+	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
+	if !ok {
+		return respondWithError(http.StatusNotFound, "Archive not found", c)
+	}
 
 	path := filepath.Join(handler.archivesDir, archiveName)
 
