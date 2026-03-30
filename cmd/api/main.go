@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,8 +20,6 @@ import (
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-
 	level := slog.LevelInfo
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
 	case "debug":
@@ -32,22 +32,35 @@ func main() {
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
 
-	var opts *redis.Options
-	var err error
+	if err := run(); err != nil {
+		slog.Error("api server failed", "error", err)
+		os.Exit(1)
+	}
+}
 
-	redisURL := os.Getenv("REDIS_URL")
-	opts, err = redis.ParseURL(redisURL)
+func run() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	opts, err := redis.ParseURL(os.Getenv("REDIS_URL"))
 	if err != nil {
-		log.Fatalf("Invalid REDIS_URL: %v", err)
+		return fmt.Errorf("invalid REDIS_URL: %w", err)
 	}
 
 	rdb := redis.NewClient(opts)
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			slog.Warn("failed to close redis client", "error", err)
+		}
+	}()
 
-	rdb.XGroupCreateMkStream(ctx, "crawl_stream", "worker_group", "$")
+	if err := rdb.XGroupCreateMkStream(ctx, "crawl_stream", "worker_group", "$").Err(); err != nil && !redis.HasErrorPrefix(err, "BUSYGROUP") {
+		return fmt.Errorf("ensure redis stream/group: %w", err)
+	}
 
 	archivesDir := os.Getenv("ARCHIVES_DIR")
 	if archivesDir == "" {
-		log.Fatalln("Environment variable ARCHIVES_DIR not set")
+		return errors.New("environment variable ARCHIVES_DIR not set")
 	}
 
 	sqliteDir := os.Getenv("SQLITE_DIR")
@@ -57,12 +70,20 @@ func main() {
 
 	archiveStore, err := store.Open(filepath.Join(sqliteDir, "archive.db"))
 	if err != nil {
-		log.Fatalln("Failed to open sqlite database")
+		return fmt.Errorf("open sqlite database: %w", err)
 	}
-	defer archiveStore.Close()
+	defer func() {
+		if err := archiveStore.Close(); err != nil {
+			slog.Warn("failed to close sqlite database", "error", err)
+		}
+	}()
 
 	if err := archiveStore.RunMigrations(); err != nil {
-		log.Fatalf("Failed to run sqlite migrations: %v", err)
+		return fmt.Errorf("run sqlite migrations: %w", err)
+	}
+
+	if err := archiveStore.SyncFromDisk(ctx, archivesDir); err != nil {
+		return fmt.Errorf("sync sqlite database from disk: %w", err)
 	}
 
 	handler := api.NewHandler(rdb, archivesDir, archiveStore)
@@ -71,21 +92,26 @@ func main() {
 
 	handler.SetRoutes(e)
 
+	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("starting api server", "addr", ":1080", "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
-		if err := e.Start(":1080"); err != nil {
-			e.Logger.Info("shutting down server")
+		if err := e.Start(":1080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("start api server: %w", err)
 		}
 	}()
 
-	<-ctx.Done()
-	cancel()
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
-		e.Logger.Fatal(err)
+		return fmt.Errorf("shutdown api server: %w", err)
 	}
 
 	slog.Info("server stopped gracefully")
+	return nil
 }

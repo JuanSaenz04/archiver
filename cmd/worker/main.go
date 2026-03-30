@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/JuanSaenz04/archiver/internal/crawler"
@@ -16,21 +19,38 @@ import (
 )
 
 func main() {
+	level := slog.LevelInfo
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
+
+	if err := run(); err != nil {
+		slog.Error("worker failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	redisURL := os.Getenv("REDIS_URL")
-	opts, err := redis.ParseURL(redisURL)
+	opts, err := redis.ParseURL(os.Getenv("REDIS_URL"))
 	if err != nil {
-		log.Fatalf("Invalid REDIS_URL: %v", err)
+		return fmt.Errorf("invalid REDIS_URL: %w", err)
 	}
 
 	rdb := redis.NewClient(opts)
 
-	// Close redis client on exit
 	defer func() {
 		if err := rdb.Close(); err != nil {
-			log.Printf("Error closing redis client: %v", err)
+			slog.Warn("failed to close redis client", "error", err)
 		}
 	}()
 
@@ -40,11 +60,12 @@ func main() {
 
 	if err != nil {
 		timeoutSeconds = 30
+		slog.Debug("invalid CRAWLER_TIMEOUT, using default", "value", timeoutEnv, "default", timeoutSeconds)
 	}
 
 	archivesDir := os.Getenv("ARCHIVES_DIR")
 	if archivesDir == "" {
-		log.Fatalln("Environment variable ARCHIVES_DIR not set")
+		return errors.New("environment variable ARCHIVES_DIR not set")
 	}
 
 	sqliteDir := os.Getenv("SQLITE_DIR")
@@ -54,11 +75,24 @@ func main() {
 
 	archiveStore, err := store.Open(filepath.Join(sqliteDir, "archive.db"))
 	if err != nil {
-		log.Fatalln("Failed to open sqlite database")
+		return fmt.Errorf("open sqlite database: %w", err)
 	}
-	defer archiveStore.Close()
+	defer func() {
+		if err := archiveStore.Close(); err != nil {
+			slog.Warn("failed to close sqlite database", "error", err)
+		}
+	}()
+
+	if err := archiveStore.RunMigrations(); err != nil {
+		return fmt.Errorf("run sqlite migrations: %w", err)
+	}
 
 	crawler := crawler.NewCrawler(timeoutSeconds, archiveStore)
 
+	slog.Info("starting worker", "timeout_seconds", timeoutSeconds, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
+
 	queue.StartWorker(ctx, rdb, crawler.Run)
+
+	slog.Info("worker stopped gracefully")
+	return nil
 }
