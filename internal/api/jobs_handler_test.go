@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
+	"github.com/JuanSaenz04/archiver/internal/queue"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
@@ -33,7 +34,10 @@ func TestHandleNewJob(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		jobReq := models.CrawlRequest{
-			URL: "https://example.com",
+			URL:         "https://example.com",
+			Name:        "Example Archive",
+			Description: "An example crawl",
+			Tags:        []string{"news", "test"},
 			Options: models.CrawlOptions{
 				Depth: 1,
 			},
@@ -60,7 +64,18 @@ func TestHandleNewJob(t *testing.T) {
 			streamEntries, err := rdb.XRange(c.Request().Context(), "crawl_stream", "-", "+").Result()
 			assert.NoError(t, err)
 			assert.Len(t, streamEntries, 1)
-			assert.Equal(t, "https://example.com", streamEntries[0].Values["target_url"])
+
+			payload, ok := streamEntries[0].Values["payload"].(string)
+			if assert.True(t, ok, "payload field must be present in stream message") {
+				var msg queue.CrawlMessage
+				err = json.Unmarshal([]byte(payload), &msg)
+				assert.NoError(t, err)
+				assert.Equal(t, "https://example.com", msg.Archive.SourceURL)
+				assert.Equal(t, "Example Archive", msg.Archive.Name)
+				assert.Equal(t, "An example crawl", msg.Archive.Description)
+				assert.ElementsMatch(t, []string{"news", "test"}, msg.Archive.Tags)
+				assert.Equal(t, 1, msg.Options.Depth)
+			}
 		}
 	})
 
