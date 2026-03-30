@@ -51,7 +51,7 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 
 	path := filepath.Join(handler.archivesDir, archiveName)
 
-	tmpDir, err := os.MkdirTemp("", "archiver")
+	tmpDir, err := os.MkdirTemp(handler.archivesDir, "archiver")
 	if err != nil {
 		slog.Error("failed to create temporary directory for delete", "archive_name", archiveName, "error", err)
 		return respondWithError(http.StatusInternalServerError, "Internal Server Error", c)
