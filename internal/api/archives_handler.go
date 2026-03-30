@@ -97,7 +97,7 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-func (handler *Handler) HandleModifyArchiveName(c echo.Context) error {
+func (handler *Handler) HandleModifyArchiveMetadata(c echo.Context) error {
 	newArchive := &models.Archive{}
 
 	if err := c.Bind(newArchive); err != nil {
@@ -120,22 +120,24 @@ func (handler *Handler) HandleModifyArchiveName(c echo.Context) error {
 
 	newPath := filepath.Join(handler.archivesDir, newName)
 
-	if _, err := os.Stat(newPath); err == nil {
-		slog.Warn("archive rename conflict: destination file exists", "old_name", archiveName, "new_name", newName, "new_path", newPath)
-		return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newName), c)
-	}
-
-	if err := os.Rename(path, newPath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			slog.Warn("archive file not found for rename", "archive_name", archiveName, "path", path)
-			return respondWithError(http.StatusNotFound, "Archive not found", c)
+	if archiveName != newName {
+		if _, err := os.Stat(newPath); err == nil {
+			slog.Warn("archive rename conflict: destination file exists", "old_name", archiveName, "new_name", newName, "new_path", newPath)
+			return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newName), c)
 		}
 
-		slog.Error("failed to rename archive file", "old_name", archiveName, "new_name", newName, "path", path, "new_path", newPath, "error", err)
-		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+		if err := os.Rename(path, newPath); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				slog.Warn("archive file not found for rename", "archive_name", archiveName, "path", path)
+				return respondWithError(http.StatusNotFound, "Archive not found", c)
+			}
+
+			slog.Error("failed to rename archive file", "old_name", archiveName, "new_name", newName, "path", path, "new_path", newPath, "error", err)
+			return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+		}
 	}
 
-	err := handler.archiveStore.Rename(c.Request().Context(), archiveName, newName)
+	err := handler.archiveStore.UpdateMetadata(c.Request().Context(), archiveName, newName, newArchive.Description, newArchive.Tags)
 	if err != nil {
 		if rollbackErr := os.Rename(newPath, path); rollbackErr != nil {
 			slog.Error("failed to rollback archive file rename", "old_name", archiveName, "new_name", newName, "path", path, "new_path", newPath, "error", rollbackErr)

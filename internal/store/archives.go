@@ -161,29 +161,7 @@ INSERT INTO tags (archive_id, tag) VALUES (?, ?)
 	return tx.Commit()
 }
 
-func (s *ArchiveStore) Rename(ctx context.Context, oldName, newName string) error {
-	const query = `
-UPDATE archives SET name = ?
-WHERE name = ?;
-	`
-
-	if res, err := s.db.ExecContext(ctx, query, newName, oldName); err != nil {
-		if isUniqueConstraint(err) {
-			return ErrArchiveNameConflict
-		}
-
-		return err
-	} else {
-		n, _ := res.RowsAffected()
-		if n == 0 {
-			return ErrArchiveNotFound
-		}
-	}
-
-	return nil
-}
-
-func (s *ArchiveStore) UpdateMetadata(ctx context.Context, name, description string, tags []string) error {
+func (s *ArchiveStore) UpdateMetadata(ctx context.Context, oldName, newName, description string, tags []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -197,7 +175,7 @@ WHERE name = ?;
 	`
 
 	var id uuid.UUID
-	if err := tx.QueryRowContext(ctx, getIDQuery, name).Scan(&id); err != nil {
+	if err := tx.QueryRowContext(ctx, getIDQuery, oldName).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrArchiveNotFound
 		}
@@ -205,12 +183,32 @@ WHERE name = ?;
 		return err
 	}
 
+	if oldName != newName {
+		const renameQuery = `
+UPDATE archives SET name = ?
+WHERE id = ?;
+		`
+
+		if res, err := tx.ExecContext(ctx, renameQuery, newName, id); err != nil {
+			if isUniqueConstraint(err) {
+				return ErrArchiveNameConflict
+			}
+
+			return err
+		} else {
+			n, _ := res.RowsAffected()
+			if n == 0 {
+				return ErrArchiveNotFound
+			}
+		}
+	}
+
 	const changeDescriptionQuery = `
 UPDATE archives SET description = ?
-WHERE name = ?;
+WHERE id = ?;
 	`
 
-	if res, err := tx.ExecContext(ctx, changeDescriptionQuery, description, name); err != nil {
+	if res, err := tx.ExecContext(ctx, changeDescriptionQuery, description, id); err != nil {
 		return err
 	} else {
 		n, _ := res.RowsAffected()
