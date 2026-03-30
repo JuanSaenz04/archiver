@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { apiClient } from "@/lib/api"
+import { toast } from "sonner"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,6 +86,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
       onRenamed(archive.name, newName)
       setIsEditing(false)
       setSuccess("Archive renamed successfully")
+      toast.success(`Archive renamed to ${editName}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to rename archive")
     } finally {
@@ -97,6 +99,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
     setError(null)
     try {
       await apiClient.delete(`/archives/${archive.name}`)
+      toast.success(`Archive "${archive.name.replace(".wacz", "")}" deleted`)
       onDeleted(archive.id)
       onOpenChange(false)
       setIsDeleting(false)

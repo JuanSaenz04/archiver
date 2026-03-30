@@ -114,14 +114,15 @@ function CreateArchive() {
 
                 {/* Name */}
                 <div className="space-y-2">
-                    <label htmlFor="name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    <label htmlFor="archive-name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                         Name (Optional)
                     </label>
                     <Input 
-                        id="name"
+                        id="archive-name"
                         placeholder="My Crawl Job"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
+                        autoComplete="off"
                     />
                 </div>
 
