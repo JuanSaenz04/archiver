@@ -113,6 +113,16 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
 
   const formattedDate = new Date(archive.created_at).toLocaleString()
 
+  const formatBytes = (bytes: number) => {
+    if (!bytes || bytes === 0) return <span className="text-muted-foreground italic">Size not available</span>
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    // Don't go higher than GB
+    const sizeIndex = Math.min(i, sizes.length - 1)
+    return `${parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2))} ${sizes[sizeIndex]}`
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -177,7 +187,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
             </div>
 
             {/* Metadata Grid */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-muted-foreground flex items-center gap-1">
                   <ExternalLink className="size-3" /> Source URL
@@ -203,6 +213,14 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                 </Label>
                 <div className="text-sm">
                   {formattedDate}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-muted-foreground flex items-center gap-1">
+                  <FileText className="size-3" /> Size
+                </Label>
+                <div className="text-sm">
+                  {formatBytes(archive.size_bytes || 0)}
                 </div>
               </div>
             </div>
