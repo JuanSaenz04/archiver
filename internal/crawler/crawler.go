@@ -12,20 +12,23 @@ import (
 	"strings"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
+	"github.com/JuanSaenz04/archiver/internal/store"
 )
 
 type Crawler struct {
 	timeoutInSeconds int
+	archiveStore     *store.ArchiveStore
 }
 
-func NewCrawler(timeoutInSeconds int) *Crawler {
+func NewCrawler(timeoutInSeconds int, archiveStore *store.ArchiveStore) *Crawler {
 	return &Crawler{
 		timeoutInSeconds: timeoutInSeconds,
+		archiveStore:     archiveStore,
 	}
 }
 
 // Run executes the crawler for a specific job.
-func (crawler *Crawler) Run(ctx context.Context, jobID, targetURL string, options models.CrawlOptions) error {
+func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error {
 	fmt.Printf("Received job with ID %s\n", jobID)
 
 	setDefaultValuesIfEmpty(&options)
@@ -34,7 +37,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID, targetURL string, option
 		ctx,
 		"xvfb-run", "--auto-servernum", "--server-args=-screen 0 1280x1024x24",
 		"node", "/app/dist/main.js", "crawl",
-		"--url", targetURL,
+		"--url", archive.SourceURL,
 		"--generateWACZ",
 		"--collection", jobID,
 		"--ignoreRobots",
@@ -50,7 +53,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID, targetURL string, option
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		log.Printf("Crawl failed for %s: %v", targetURL, err)
+		log.Printf("Crawl failed for %s: %v", archive.SourceURL, err)
 		return err
 	}
 
@@ -61,12 +64,12 @@ func (crawler *Crawler) Run(ctx context.Context, jobID, targetURL string, option
 	}
 
 	if err := os.MkdirAll(archivesDir, 0755); err != nil {
-		log.Printf("Crawl failed for %s: %v", targetURL, err)
+		log.Printf("Crawl failed for %s: %v", archive.SourceURL, err)
 		return err
 	}
 
 	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
-	name := strings.ReplaceAll(options.Name, " ", "-") + ".wacz"
+	name := strings.ReplaceAll(archive.Name, " ", "-") + ".wacz"
 	if name == "" {
 		name = jobID + ".wacz"
 	}
@@ -86,6 +89,12 @@ func (crawler *Crawler) Run(ctx context.Context, jobID, targetURL string, option
 
 	if _, err := io.Copy(dst, src); err != nil {
 		return fmt.Errorf("failed to copy wacz: %w", err)
+	}
+
+	err = crawler.archiveStore.Insert(ctx, archive)
+	if err != nil {
+		os.Remove(dstPath) // Remove archive if database insertion fails
+		return err
 	}
 
 	return nil

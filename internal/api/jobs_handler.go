@@ -15,7 +15,7 @@ func (handler *Handler) HandleNewJob(c echo.Context) error {
 		return respondWithError(http.StatusBadRequest, "Bad request", c)
 	}
 
-	jobId, err := queue.EnqueueCrawl(c.Request().Context(), handler.rdb, job.URL, job.Options)
+	jobId, err := queue.EnqueueCrawl(c.Request().Context(), handler.rdb, *job)
 	if err != nil {
 		return respondWithError(http.StatusInternalServerError, "Failed to queue job", c)
 	}
