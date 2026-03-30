@@ -92,6 +92,13 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		return fmt.Errorf("failed to copy wacz: %w", err)
 	}
 
+	fileInfo, err := dst.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to check wacz size: %w", err)
+	}
+
+	archive.SizeBytes = fileInfo.Size()
+
 	err = crawler.archiveStore.Insert(ctx, archive)
 	if err != nil {
 		os.Remove(dstPath) // Remove archive if database insertion fails

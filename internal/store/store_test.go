@@ -51,6 +51,7 @@ func TestInsertAndList(t *testing.T) {
 		SourceURL:   "https://example.com/first",
 		Tags:        []string{"news", "2026"},
 		CreatedAt:   time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC),
+		SizeBytes:   1024,
 	}
 
 	second := models.Archive{
@@ -60,6 +61,7 @@ func TestInsertAndList(t *testing.T) {
 		SourceURL:   "https://example.com/second",
 		Tags:        []string{"tech"},
 		CreatedAt:   time.Date(2026, 3, 29, 11, 0, 0, 0, time.UTC),
+		SizeBytes:   2048,
 	}
 
 	if err := s.Insert(ctx, first); err != nil {
@@ -92,12 +94,20 @@ func TestInsertAndList(t *testing.T) {
 		t.Fatalf("first archive tags length mismatch: got %d, want 2", len(got.Tags))
 	}
 
+	if got := byName[first.Name]; got.SizeBytes != first.SizeBytes {
+		t.Fatalf("first archive size mismatch: got %d, want %d", got.SizeBytes, first.SizeBytes)
+	}
+
 	if got := byName[second.Name]; got.ID != second.ID {
 		t.Fatalf("second archive id mismatch: got %s, want %s", got.ID, second.ID)
 	}
 
 	if got := byName[second.Name]; len(got.Tags) != 1 || got.Tags[0] != "tech" {
 		t.Fatalf("unexpected second archive tags: %#v", got.Tags)
+	}
+
+	if got := byName[second.Name]; got.SizeBytes != second.SizeBytes {
+		t.Fatalf("second archive size mismatch: got %d, want %d", got.SizeBytes, second.SizeBytes)
 	}
 }
 
@@ -113,6 +123,7 @@ func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
 		SourceURL:   "https://example.com/one",
 		Tags:        []string{"a"},
 		CreatedAt:   createdAt,
+		SizeBytes:   128,
 	}); err != nil {
 		t.Fatalf("insert first archive: %v", err)
 	}
@@ -124,6 +135,7 @@ func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
 		SourceURL:   "https://example.com/two",
 		Tags:        []string{"b"},
 		CreatedAt:   createdAt.Add(time.Minute),
+		SizeBytes:   256,
 	})
 
 	if !errors.Is(err, ErrArchiveNameConflict) {
@@ -143,6 +155,7 @@ func TestInsertUsesSQLiteDefaultCreatedAtWhenZero(t *testing.T) {
 		Description: "created with sqlite default",
 		SourceURL:   "https://example.com/default",
 		Tags:        []string{"default"},
+		SizeBytes:   4096,
 	}); err != nil {
 		t.Fatalf("insert archive with zero created_at: %v", err)
 	}
@@ -160,6 +173,15 @@ func TestInsertUsesSQLiteDefaultCreatedAtWhenZero(t *testing.T) {
 
 	if createdAt.Before(before) || createdAt.After(after) {
 		t.Fatalf("expected created_at between %s and %s, got %s", before, after, createdAt)
+	}
+
+	var sizeBytes int64
+	if err := s.db.QueryRowContext(ctx, "SELECT size_bytes FROM archives WHERE name = ?;", "default-created-at.wacz").Scan(&sizeBytes); err != nil {
+		t.Fatalf("read size_bytes: %v", err)
+	}
+
+	if sizeBytes != 4096 {
+		t.Fatalf("expected size_bytes=%d, got %d", int64(4096), sizeBytes)
 	}
 }
 
@@ -202,12 +224,25 @@ func TestSyncFromDiskInsertsMissingWACZFiles(t *testing.T) {
 	}
 
 	var createdAt time.Time
-	if err := s.db.QueryRowContext(ctx, "SELECT created_at FROM archives WHERE name = ?;", "a.wacz").Scan(&createdAt); err != nil {
+	var sizeBytes int64
+	if err := s.db.QueryRowContext(ctx, "SELECT created_at, size_bytes FROM archives WHERE name = ?;", "a.wacz").Scan(&createdAt, &sizeBytes); err != nil {
 		t.Fatalf("read created_at for a.wacz: %v", err)
 	}
 
 	if !createdAt.Equal(mtime) {
 		t.Fatalf("created_at mismatch: got %s, want %s", createdAt.UTC(), mtime.UTC())
+	}
+
+	if sizeBytes != int64(len("one")) {
+		t.Fatalf("size_bytes mismatch for a.wacz: got %d, want %d", sizeBytes, len("one"))
+	}
+
+	if err := s.db.QueryRowContext(ctx, "SELECT size_bytes FROM archives WHERE name = ?;", "b.WACZ").Scan(&sizeBytes); err != nil {
+		t.Fatalf("read size_bytes for b.WACZ: %v", err)
+	}
+
+	if sizeBytes != int64(len("two")) {
+		t.Fatalf("size_bytes mismatch for b.WACZ: got %d, want %d", sizeBytes, len("two"))
 	}
 
 	if err := s.SyncFromDisk(ctx, archivesDir); err != nil {
@@ -251,6 +286,7 @@ func TestSyncFromDiskSkipsAlreadyInsertedFiles(t *testing.T) {
 		SourceURL:   "https://example.com/existing",
 		Tags:        []string{"keep"},
 		CreatedAt:   existingCreatedAt,
+		SizeBytes:   777,
 	}); err != nil {
 		t.Fatalf("insert existing archive: %v", err)
 	}
@@ -270,7 +306,8 @@ func TestSyncFromDiskSkipsAlreadyInsertedFiles(t *testing.T) {
 	var gotID uuid.UUID
 	var gotDescription string
 	var gotCreatedAt time.Time
-	if err := s.db.QueryRowContext(ctx, "SELECT id, description, created_at FROM archives WHERE name = ?;", existingName).Scan(&gotID, &gotDescription, &gotCreatedAt); err != nil {
+	var gotSizeBytes int64
+	if err := s.db.QueryRowContext(ctx, "SELECT id, description, created_at, size_bytes FROM archives WHERE name = ?;", existingName).Scan(&gotID, &gotDescription, &gotCreatedAt, &gotSizeBytes); err != nil {
 		t.Fatalf("read existing archive row: %v", err)
 	}
 
@@ -282,6 +319,17 @@ func TestSyncFromDiskSkipsAlreadyInsertedFiles(t *testing.T) {
 	}
 	if !gotCreatedAt.Equal(existingCreatedAt) {
 		t.Fatalf("existing archive created_at changed: got %s, want %s", gotCreatedAt.UTC(), existingCreatedAt.UTC())
+	}
+	if gotSizeBytes != 777 {
+		t.Fatalf("existing archive size_bytes changed: got %d, want %d", gotSizeBytes, 777)
+	}
+
+	var newArchiveSizeBytes int64
+	if err := s.db.QueryRowContext(ctx, "SELECT size_bytes FROM archives WHERE name = ?;", newName).Scan(&newArchiveSizeBytes); err != nil {
+		t.Fatalf("read new archive size_bytes: %v", err)
+	}
+	if newArchiveSizeBytes != int64(len("new")) {
+		t.Fatalf("new archive size_bytes mismatch: got %d, want %d", newArchiveSizeBytes, len("new"))
 	}
 }
 

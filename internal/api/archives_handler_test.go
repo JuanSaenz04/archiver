@@ -81,6 +81,7 @@ func TestHandleGetArchives(t *testing.T) {
 		SourceURL:   "https://one.example",
 		Tags:        []string{"news"},
 		CreatedAt:   time.Date(2026, 3, 30, 10, 0, 0, 0, time.UTC),
+		SizeBytes:   1536,
 	})
 	insertArchiveFixture(t, archiveStore, models.Archive{
 		ID:          uuid.New(),
@@ -89,6 +90,7 @@ func TestHandleGetArchives(t *testing.T) {
 		SourceURL:   "https://two.example",
 		Tags:        []string{"tech", "go"},
 		CreatedAt:   time.Date(2026, 3, 30, 11, 0, 0, 0, time.UTC),
+		SizeBytes:   3072,
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/archives", nil)
@@ -110,6 +112,60 @@ func TestHandleGetArchives(t *testing.T) {
 			names = append(names, archive.Name)
 		}
 		assert.ElementsMatch(t, []string{"archive1.wacz", "archive2.wacz"}, names)
+
+		byName := make(map[string]models.Archive, len(archives))
+		for _, archive := range archives {
+			byName[archive.Name] = archive
+		}
+		assert.Equal(t, int64(1536), byName["archive1.wacz"].SizeBytes)
+		assert.Equal(t, int64(3072), byName["archive2.wacz"].SizeBytes)
+	}
+}
+
+func TestHandleGetArchivesIncludesSizeBytesFromStoredArchiveMetadata(t *testing.T) {
+	archiveStore, dbPath := openArchiveStore(t)
+	handler := &Handler{archiveStore: archiveStore}
+	e := echo.New()
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open direct sqlite handle: %v", err)
+	}
+	defer db.Close()
+
+	archiveID := uuid.New()
+	createdAt := time.Date(2026, 3, 30, 12, 0, 0, 0, time.UTC)
+	if _, err := db.ExecContext(
+		context.Background(),
+		"INSERT INTO archives (id, name, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?);",
+		archiveID,
+		"seeded.wacz",
+		"seeded",
+		"https://seeded.example",
+		createdAt,
+		int64(8192),
+	); err != nil {
+		t.Fatalf("seed archive row: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), "INSERT INTO tags (archive_id, tag) VALUES (?, ?);", archiveID, "seed"); err != nil {
+		t.Fatalf("seed tag row: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/archives", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if assert.NoError(t, handler.HandleGetArchives(c)) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var response map[string][]models.Archive
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		assert.NoError(t, err)
+
+		archives := response["archives"]
+		assert.Len(t, archives, 1)
+		assert.Equal(t, "seeded.wacz", archives[0].Name)
+		assert.Equal(t, int64(8192), archives[0].SizeBytes)
 	}
 }
 

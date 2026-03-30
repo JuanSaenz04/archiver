@@ -31,8 +31,8 @@ func (s *ArchiveStore) SyncFromDisk(ctx context.Context, archivesDir string) err
 	defer tx.Rollback()
 
 	const insertArchiveQuery = `
-INSERT OR IGNORE INTO archives (id, name, description, source_url, created_at)
-VALUES (?, ?, '', '', ?);
+INSERT OR IGNORE INTO archives (id, name, description, source_url, created_at, size_bytes)
+VALUES (?, ?, '', '', ?, ?);
 `
 
 	stmt, err := tx.PrepareContext(ctx, insertArchiveQuery)
@@ -55,7 +55,7 @@ VALUES (?, ?, '', '', ?);
 			return err
 		}
 
-		if _, err := stmt.ExecContext(ctx, uuid.New(), file.Name(), fileInfo.ModTime()); err != nil {
+		if _, err := stmt.ExecContext(ctx, uuid.New(), file.Name(), fileInfo.ModTime(), fileInfo.Size()); err != nil {
 			return err
 		}
 	}
@@ -65,7 +65,7 @@ VALUES (?, ?, '', '', ?);
 
 func (s *ArchiveStore) List(ctx context.Context) ([]models.Archive, error) {
 	const query = `
-SELECT a.id, a.name, a.description, a.source_url, a.created_at, t.tag
+SELECT a.id, a.name, a.description, a.source_url, a.created_at, a.size_bytes, t.tag
 FROM archives a
 LEFT JOIN tags t ON t.archive_id = a.id;
 `
@@ -85,9 +85,10 @@ LEFT JOIN tags t ON t.archive_id = a.id;
 			name, description, sourceURL string
 			tag                          sql.NullString
 			createdAt                    time.Time
+			sizeBytes                    int64
 		)
 
-		if err := rows.Scan(&id, &name, &description, &sourceURL, &createdAt, &tag); err != nil {
+		if err := rows.Scan(&id, &name, &description, &sourceURL, &createdAt, &sizeBytes, &tag); err != nil {
 			return nil, err
 		}
 
@@ -103,6 +104,7 @@ LEFT JOIN tags t ON t.archive_id = a.id;
 				SourceURL:   sourceURL,
 				Tags:        make([]string, 0),
 				CreatedAt:   createdAt,
+				SizeBytes:   sizeBytes,
 			}
 			if tag.Valid {
 				archive.Tags = append(archive.Tags, tag.String)
@@ -128,14 +130,14 @@ func (s *ArchiveStore) Insert(ctx context.Context, a models.Archive) error {
 	defer tx.Rollback()
 
 	archiveQuery := `
-INSERT INTO archives (id, name, description, source_url, created_at) VALUES (?, ?, ?, ?, ?);
+INSERT INTO archives (id, name, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?);
 	`
-	archiveArgs := []any{a.ID, a.Name, a.Description, a.SourceURL, a.CreatedAt}
+	archiveArgs := []any{a.ID, a.Name, a.Description, a.SourceURL, a.CreatedAt, a.SizeBytes}
 	if a.CreatedAt.IsZero() {
 		archiveQuery = `
-INSERT INTO archives (id, name, description, source_url) VALUES (?, ?, ?, ?);
+INSERT INTO archives (id, name, description, source_url, size_bytes) VALUES (?, ?, ?, ?, ?);
 		`
-		archiveArgs = []any{a.ID, a.Name, a.Description, a.SourceURL}
+		archiveArgs = []any{a.ID, a.Name, a.Description, a.SourceURL, a.SizeBytes}
 	}
 
 	if _, err := tx.ExecContext(ctx, archiveQuery, archiveArgs...); err != nil {

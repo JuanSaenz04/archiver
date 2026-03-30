@@ -13,4 +13,5 @@ type Archive struct {
 	SourceURL   string    `json:"source_url"`
 	Tags        []string  `json:"tags"`
 	CreatedAt   time.Time `json:"created_at"`
+	SizeBytes   int64     `json:"size_bytes"`
 }
