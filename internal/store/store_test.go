@@ -131,6 +131,38 @@ func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
 	}
 }
 
+func TestInsertUsesSQLiteDefaultCreatedAtWhenZero(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	before := time.Now().UTC().Add(-time.Second)
+
+	if err := s.Insert(ctx, models.Archive{
+		ID:          uuid.New(),
+		Name:        "default-created-at.wacz",
+		Description: "created with sqlite default",
+		SourceURL:   "https://example.com/default",
+		Tags:        []string{"default"},
+	}); err != nil {
+		t.Fatalf("insert archive with zero created_at: %v", err)
+	}
+
+	after := time.Now().UTC().Add(time.Second)
+
+	var createdAt time.Time
+	if err := s.db.QueryRowContext(ctx, "SELECT created_at FROM archives WHERE name = ?;", "default-created-at.wacz").Scan(&createdAt); err != nil {
+		t.Fatalf("read created_at: %v", err)
+	}
+
+	if createdAt.IsZero() {
+		t.Fatal("expected sqlite to assign created_at, got zero value")
+	}
+
+	if createdAt.Before(before) || createdAt.After(after) {
+		t.Fatalf("expected created_at between %s and %s, got %s", before, after, createdAt)
+	}
+}
+
 func TestSyncFromDiskInsertsMissingWACZFiles(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

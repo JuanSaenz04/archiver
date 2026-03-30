@@ -127,11 +127,18 @@ func (s *ArchiveStore) Insert(ctx context.Context, a models.Archive) error {
 	}
 	defer tx.Rollback()
 
-	const archiveQuery = `
+	archiveQuery := `
 INSERT INTO archives (id, name, description, source_url, created_at) VALUES (?, ?, ?, ?, ?);
 	`
+	archiveArgs := []any{a.ID, a.Name, a.Description, a.SourceURL, a.CreatedAt}
+	if a.CreatedAt.IsZero() {
+		archiveQuery = `
+INSERT INTO archives (id, name, description, source_url) VALUES (?, ?, ?, ?);
+		`
+		archiveArgs = []any{a.ID, a.Name, a.Description, a.SourceURL}
+	}
 
-	if _, err := tx.ExecContext(ctx, archiveQuery, a.ID, a.Name, a.Description, a.SourceURL, a.CreatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, archiveQuery, archiveArgs...); err != nil {
 		if isUniqueConstraint(err) {
 			return ErrArchiveNameConflict
 		} else {
