@@ -5,10 +5,12 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/api"
+	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
@@ -34,7 +36,18 @@ func main() {
 		log.Fatalln("Environment variable ARCHIVES_DIR not set")
 	}
 
-	handler := api.NewHandler(rdb, archivesDir)
+	sqliteDir := os.Getenv("SQLITE_DIR")
+	if sqliteDir == "" {
+		sqliteDir = archivesDir
+	}
+
+	archiveStore, err := store.Open(filepath.Join(sqliteDir, "archive.db"))
+	if err != nil {
+		log.Fatalln("Failed to open sqlite database")
+	}
+	defer archiveStore.Close()
+
+	handler := api.NewHandler(rdb, archivesDir, archiveStore)
 
 	e := echo.New()
 

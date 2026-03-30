@@ -5,11 +5,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 
 	"github.com/JuanSaenz04/archiver/internal/crawler"
 	"github.com/JuanSaenz04/archiver/internal/queue"
+	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -40,7 +42,23 @@ func main() {
 		timeoutSeconds = 30
 	}
 
-	crawler := crawler.NewCrawler(timeoutSeconds)
+	archivesDir := os.Getenv("ARCHIVES_DIR")
+	if archivesDir == "" {
+		log.Fatalln("Environment variable ARCHIVES_DIR not set")
+	}
+
+	sqliteDir := os.Getenv("SQLITE_DIR")
+	if sqliteDir == "" {
+		sqliteDir = archivesDir
+	}
+
+	archiveStore, err := store.Open(filepath.Join(sqliteDir, "archive.db"))
+	if err != nil {
+		log.Fatalln("Failed to open sqlite database")
+	}
+	defer archiveStore.Close()
+
+	crawler := crawler.NewCrawler(timeoutSeconds, archiveStore)
 
 	queue.StartWorker(ctx, rdb, crawler.Run)
 }

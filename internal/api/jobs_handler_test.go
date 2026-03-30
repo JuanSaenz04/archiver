@@ -9,6 +9,7 @@ import (
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/queue"
+	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
@@ -29,7 +30,8 @@ func TestHandleNewJob(t *testing.T) {
 	})
 
 	// 3. Initialize Handler
-	handler := NewHandler(rdb, t.TempDir())
+	var archiveStore *store.ArchiveStore
+	handler := NewHandler(rdb, t.TempDir(), archiveStore)
 	e := echo.New()
 
 	t.Run("Success", func(t *testing.T) {
@@ -102,7 +104,8 @@ func TestHandleGetJobs(t *testing.T) {
 		Addr: mr.Addr(),
 	})
 
-	handler := NewHandler(rdb, t.TempDir())
+	var archiveStore *store.ArchiveStore
+	handler := NewHandler(rdb, t.TempDir(), archiveStore)
 	e := echo.New()
 
 	t.Run("Empty", func(t *testing.T) {

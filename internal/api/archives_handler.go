@@ -9,21 +9,15 @@ import (
 	"strings"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
+	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/labstack/echo/v4"
 )
 
 func (handler *Handler) HandleGetArchives(c echo.Context) error {
-	pattern := filepath.Join(handler.archivesDir, "*.wacz")
-
-	files, err := filepath.Glob(pattern)
+	archives, err := handler.archiveStore.List(c.Request().Context())
 	if err != nil {
-		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
-	}
-
-	archives := make([]models.Archive, len(files))
-
-	for i, path := range files {
-		archives[i].Name = filepath.Base(path)
+		// Log errors in the future
+		return respondWithError(http.StatusInternalServerError, "Internal Server Error", c)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -51,13 +45,36 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 
 	path := filepath.Join(handler.archivesDir, archiveName)
 
-	if err := os.Remove(path); err != nil {
+	tmpDir, err := os.MkdirTemp("", "archiver")
+	if err != nil {
+		return respondWithError(http.StatusInternalServerError, "Internal Server Error", c)
+	}
+
+	tempArchiveName := filepath.Join(tmpDir, archiveName)
+
+	if err := os.Rename(path, tempArchiveName); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return respondWithError(http.StatusNotFound, "Archive not found", c)
 		}
 
 		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
 	}
+
+	err = handler.archiveStore.Delete(c.Request().Context(), archiveName)
+	if err != nil {
+		// Attempt rollback. Log errors in the future.
+		os.Rename(tempArchiveName, path)
+
+		if errors.Is(err, store.ErrArchiveNotFound) {
+			return respondWithError(http.StatusNotFound, "Archive not found", c)
+		}
+
+		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+	}
+
+	// Remove temp file permanently
+	// Log errors in the future.
+	os.RemoveAll(tmpDir)
 
 	return c.NoContent(http.StatusNoContent)
 }
@@ -89,6 +106,23 @@ func (handler *Handler) HandleModifyArchiveName(c echo.Context) error {
 
 	if err := os.Rename(path, newPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			return respondWithError(http.StatusNotFound, "Archive not found", c)
+		}
+
+		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+	}
+
+	err := handler.archiveStore.Rename(c.Request().Context(), archiveName, newName)
+	if err != nil {
+		// Best-effort rollback
+		// Log errors in the future
+		os.Rename(newPath, path)
+
+		if errors.Is(err, store.ErrArchiveNameConflict) {
+			return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newName), c)
+		}
+
+		if errors.Is(err, store.ErrArchiveNotFound) {
 			return respondWithError(http.StatusNotFound, "Archive not found", c)
 		}
 
