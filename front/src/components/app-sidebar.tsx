@@ -95,17 +95,23 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
     }
   }
 
-  const handleArchiveRenamed = (oldName: string, newName: string) => {
+  const handleArchiveUpdated = (updatedArchive: Archive) => {
     if (archives) {
+      // Find the old archive by ID
       setArchives(archives.map(a => 
-        a.name === oldName ? { ...a, name: newName } : a
+        a.id === updatedArchive.id ? updatedArchive : a
       ))
-      if (selectedArchive === oldName) {
-        onArchiveSelected(newName)
+
+      // If the currently selected archive was the one updated (potentially renamed)
+      // We must check by old name before update, or just check by ID if we had ID
+      const oldArchive = archives.find(a => a.id === updatedArchive.id)
+      if (oldArchive && selectedArchive === oldArchive.name) {
+        onArchiveSelected(updatedArchive.name)
       }
-      // Update the detailArchive if it was the one renamed
-      if (detailArchive?.name === oldName) {
-        setDetailArchive({ ...detailArchive, name: newName })
+
+      // Update the detailArchive to reflect changes in the dialog immediately
+      if (detailArchive?.id === updatedArchive.id) {
+        setDetailArchive(updatedArchive)
       }
     }
   }
@@ -288,7 +294,7 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onDeleted={handleArchiveDeleted}
-        onRenamed={handleArchiveRenamed}
+        onUpdated={handleArchiveUpdated}
       />
     </Sidebar>
   )

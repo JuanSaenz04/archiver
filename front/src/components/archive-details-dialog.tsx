@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { 
@@ -40,12 +41,14 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDeleted: (archiveId: string) => void
-  onRenamed: (oldName: string, newName: string) => void
+  onUpdated: (updatedArchive: Archive) => void
 }
 
-export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, onRenamed }: Props) {
+export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, onUpdated }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [editTags, setEditTags] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,12 +57,14 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
   useEffect(() => {
     if (archive) {
       setEditName(archive.name.replace(".wacz", ""))
+      setEditDescription(archive.description || "")
+      setEditTags(archive.tags?.join(", ") || "")
       setIsEditing(false)
       setError(null)
       // Only clear success if we are opening the dialog or switching to a DIFFERENT archive
       // We check if success was already set to avoid clearing it immediately after rename
     }
-  }, [archive?.id, open])
+  }, [archive, open])
 
   // Separate effect to clear messages when opening/closing
   useEffect(() => {
@@ -71,24 +76,46 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
 
   if (!archive) return null
 
-  const handleRename = async () => {
-    if (!editName.trim() || editName === archive.name.replace(".wacz", "")) {
-      setIsEditing(false)
+  const handleUpdate = async () => {
+    if (!editName.trim()) {
+      setError("Name cannot be empty")
       return
     }
+
+    // Parse tags: split on comma, trim, drop empty
+    const parsedTags = editTags
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0)
 
     setIsLoading(true)
     setError(null)
     setSuccess(null)
     try {
-      await apiClient.put(`/archives/${archive.name}`, { name: editName })
+      const payload = {
+        name: editName,
+        description: editDescription,
+        tags: parsedTags
+      }
+
+      await apiClient.put(`/archives/${archive.name}`, payload)
       const newName = editName + ".wacz"
-      onRenamed(archive.name, newName)
+      
+      const updatedArchive: Archive = {
+        ...archive,
+        name: newName,
+        description: editDescription,
+        tags: parsedTags
+      }
+
+      // Notify parent about the update
+      onUpdated(updatedArchive)
+      
       setIsEditing(false)
-      setSuccess("Archive renamed successfully")
-      toast.success(`Archive renamed to ${editName}`)
+      setSuccess("Archive updated successfully")
+      toast.success(`Archive "${editName}" updated`)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to rename archive")
+      setError(err instanceof Error ? err.message : "Failed to update archive")
     } finally {
       setIsLoading(false)
     }
@@ -137,108 +164,109 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
           <div className="space-y-6 py-4">
             {/* Name */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-muted-foreground">Name</Label>
-                {!isEditing && (
-                  <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => setIsEditing(true)}>
-                    <Pencil className="mr-2 size-3" />
-                    Edit
-                  </Button>
-                )}
-              </div>
+              <Label className="text-muted-foreground">Name</Label>
               {isEditing ? (
-                <div className="flex items-center gap-2">
-                  <Input 
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="h-9"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleRename()
-                      if (e.key === "Escape") setIsEditing(false)
-                    }}
-                  />
-                  <Button size="icon" variant="ghost" className="size-9 h-9" onClick={handleRename} disabled={isLoading}>
-                    <Check className="size-4 text-green-500" />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="size-9 h-9" onClick={() => setIsEditing(false)} disabled={isLoading}>
-                    <X className="size-4 text-red-500" />
-                  </Button>
-                </div>
+                <Input 
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="h-9"
+                  autoFocus
+                />
               ) : (
                 <div className="text-lg font-semibold truncate">{archive.name.replace(".wacz", "")}</div>
               )}
             </div>
 
             {/* File Name */}
-            <div className="space-y-1">
-              <Label className="text-muted-foreground">Filename</Label>
-              <div className="text-sm font-mono bg-muted p-2 rounded-md break-all">
-                {archive.name}
+            {!isEditing && (
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Filename</Label>
+                <div className="text-sm font-mono bg-muted p-2 rounded-md break-all">
+                  {archive.name}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Description */}
             <div className="space-y-1">
               <Label className="text-muted-foreground">Description</Label>
-              <div className="text-sm min-h-[60px] p-2 rounded-md border bg-muted/30 whitespace-pre-wrap">
-                {archive.description || <span className="text-muted-foreground italic">No description provided</span>}
-              </div>
+              {isEditing ? (
+                <Textarea 
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Enter archive description..."
+                  className="min-h-[100px] resize-none"
+                />
+              ) : (
+                <div className="text-sm min-h-[60px] p-2 rounded-md border bg-muted/30 whitespace-pre-wrap">
+                  {archive.description || <span className="text-muted-foreground italic">No description provided</span>}
+                </div>
+              )}
             </div>
 
             {/* Metadata Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-muted-foreground flex items-center gap-1">
-                  <ExternalLink className="size-3" /> Source URL
-                </Label>
-                <div className="text-sm truncate">
-                  {archive.source_url ? (
-                    <a 
-                      href={archive.source_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      {archive.source_url}
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground italic">No URL</span>
-                  )}
+            {!isEditing && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground flex items-center gap-1">
+                    <ExternalLink className="size-3" /> Source URL
+                  </Label>
+                  <div className="text-sm truncate">
+                    {archive.source_url ? (
+                      <a 
+                        href={archive.source_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        {archive.source_url}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground italic">No URL</span>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground flex items-center gap-1">
+                    <Calendar className="size-3" /> Created
+                  </Label>
+                  <div className="text-sm">
+                    {formattedDate}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground flex items-center gap-1">
+                    <FileText className="size-3" /> Size
+                  </Label>
+                  <div className="text-sm">
+                    {formatBytes(archive.size_bytes || 0)}
+                  </div>
                 </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-muted-foreground flex items-center gap-1">
-                  <Calendar className="size-3" /> Created
-                </Label>
-                <div className="text-sm">
-                  {formattedDate}
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-muted-foreground flex items-center gap-1">
-                  <FileText className="size-3" /> Size
-                </Label>
-                <div className="text-sm">
-                  {formatBytes(archive.size_bytes || 0)}
-                </div>
-              </div>
-            </div>
+            )}
 
             {/* Tags */}
             <div className="space-y-2">
               <Label className="text-muted-foreground flex items-center gap-1">
                 <Tag className="size-3" /> Tags
               </Label>
-              <div className="flex flex-wrap gap-1">
-                {archive.tags && archive.tags.length > 0 ? (
-                  archive.tags.map(tag => (
-                    <Badge key={tag} variant="secondary">{tag}</Badge>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground italic">No tags</span>
-                )}
-              </div>
+              {isEditing ? (
+                <Input 
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  placeholder="tag1, tag2, tag3"
+                />
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {archive.tags && archive.tags.length > 0 ? (
+                    archive.tags.map(tag => (
+                      <Badge key={tag} variant="secondary">{tag}</Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground italic">No tags</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {error && (
@@ -256,23 +284,50 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
             )}
           </div>
 
-          <DialogFooter className="flex-row sm:justify-between gap-2">
-            <Button 
-              variant="destructive" 
-              className="flex-1 sm:flex-none"
-              onClick={() => setIsDeleting(true)}
-              disabled={isLoading}
-            >
-              <Trash2 className="mr-2 size-4" />
-              Delete Archive
-            </Button>
-            <Button 
-              variant="outline" 
-              className="flex-1 sm:flex-none"
-              onClick={() => onOpenChange(false)}
-            >
-              Close
-            </Button>
+          <DialogFooter className="flex-row sm:justify-end gap-2">
+            {isEditing ? (
+              <div className="flex items-center gap-2 w-full">
+                <Button 
+                  className="flex-1" 
+                  onClick={handleUpdate} 
+                  disabled={isLoading}
+                >
+                  <Check className="mr-2 size-4" />
+                  Save Changes
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex-1" 
+                  onClick={() => setIsEditing(false)}
+                  disabled={isLoading}
+                >
+                  <X className="mr-2 size-4" />
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setIsEditing(true)}
+                >
+                  <Pencil className="mr-2 size-4" />
+                  Edit Metadata
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  className="h-9"
+                  onClick={() => setIsDeleting(true)}
+                  disabled={isLoading}
+                >
+                  <Trash2 className="mr-2 size-4" />
+                  Delete
+                </Button>
+              </div>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
