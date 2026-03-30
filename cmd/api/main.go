@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,6 +19,18 @@ import (
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
+	level := slog.LevelInfo
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
 
 	var opts *redis.Options
 	var err error
@@ -47,6 +61,10 @@ func main() {
 	}
 	defer archiveStore.Close()
 
+	if err := archiveStore.RunMigrations(); err != nil {
+		log.Fatalf("Failed to run sqlite migrations: %v", err)
+	}
+
 	handler := api.NewHandler(rdb, archivesDir, archiveStore)
 
 	e := echo.New()
@@ -54,6 +72,7 @@ func main() {
 	handler.SetRoutes(e)
 
 	go func() {
+		slog.Info("starting api server", "addr", ":1080", "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
 		if err := e.Start(":1080"); err != nil {
 			e.Logger.Info("shutting down server")
 		}
@@ -68,5 +87,5 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 
-	log.Println("Server stopped gracefully")
+	slog.Info("server stopped gracefully")
 }
