@@ -1,6 +1,6 @@
 module github.com/JuanSaenz04/archiver
 
-go 1.25.5
+go 1.26.1
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -8,6 +8,7 @@ require (
 	github.com/labstack/echo/v4 v4.15.0
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/stretchr/testify v1.11.1
+	modernc.org/sqlite v1.48.0
 )
 
 require (
@@ -33,5 +34,4 @@ require (
 	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.48.0 // indirect
 )
