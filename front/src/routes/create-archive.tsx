@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { apiClient } from '@/lib/api'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Loader2, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,8 @@ function CreateArchive() {
   // Form State
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [tags, setTags] = useState('')
   const [scopeType, setScopeType] = useState('page')
   const [pageLimit, setPageLimit] = useState(100)
   const [sizeLimit, setSizeLimit] = useState(0) // 0 usually means unlimited or default
@@ -49,11 +52,19 @@ function CreateArchive() {
       return
     }
 
+    // Parse tags: split on comma, trim, drop empty
+    const parsedTags = tags
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0)
+
     try {
       const payload = {
         url: url,
+        name: name,
+        description: description,
+        tags: parsedTags,
         crawl_options: {
-          name: name,
           scopeType: scopeType,
           page_limit: Number(pageLimit),
           size_limit: Number(sizeLimit),
@@ -65,9 +76,9 @@ function CreateArchive() {
       
       // Navigate back to home on success
       navigate({ to: '/' })
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err)
-      setError(err.message || "Failed to create archive job")
+      setError(err instanceof Error ? err.message : "Failed to create archive job")
     } finally {
       setIsLoading(false)
     }
@@ -103,14 +114,42 @@ function CreateArchive() {
 
                 {/* Name */}
                 <div className="space-y-2">
-                    <label htmlFor="name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    <label htmlFor="archive-name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                         Name (Optional)
                     </label>
                     <Input 
-                        id="name"
+                        id="archive-name"
                         placeholder="My Crawl Job"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
+                        autoComplete="off"
+                    />
+                </div>
+
+                {/* Description */}
+                <div className="space-y-2">
+                    <label htmlFor="description" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        Description (Optional)
+                    </label>
+                    <Textarea 
+                        id="description"
+                        placeholder="Enter a description for the archive"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className="resize-none"
+                    />
+                </div>
+
+                {/* Tags */}
+                <div className="space-y-2">
+                    <label htmlFor="tags" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        Tags (Optional, comma-separated)
+                    </label>
+                    <Input 
+                        id="tags"
+                        placeholder="tag1, tag2, tag3"
+                        value={tags}
+                        onChange={(e) => setTags(e.target.value)}
                     />
                 </div>
 
@@ -122,7 +161,7 @@ function CreateArchive() {
                                 Scope
                             </label>
                             <Tooltip>
-                                <TooltipTrigger>
+                                <TooltipTrigger asChild>
                                     <Info className="size-4 text-muted-foreground" />
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-xs space-y-2 p-4">

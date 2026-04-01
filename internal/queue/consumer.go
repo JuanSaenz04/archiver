@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -18,7 +19,7 @@ const (
 )
 
 // Processor is a function that processes a job.
-type Processor func(ctx context.Context, jobID, targetURL string, options models.CrawlOptions) error
+type Processor func(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error
 
 func ensureStreamAndGroup(ctx context.Context, rdb *redis.Client) error {
 	err := rdb.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err()
@@ -30,9 +31,9 @@ func ensureStreamAndGroup(ctx context.Context, rdb *redis.Client) error {
 
 // StartWorker starts the worker loop to consume jobs from Redis.
 // On any error it retries after retryInterval indefinitely.
-func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
+func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) error {
 	if err := ensureStreamAndGroup(ctx, rdb); err != nil {
-		log.Fatalf("Failed to create consumer group on startup: %v", err)
+		return fmt.Errorf("create consumer group on startup: %w", err)
 	}
 
 	log.Println("Worker started, waiting for jobs...")
@@ -41,7 +42,7 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 		select {
 		case <-ctx.Done():
 			log.Println("Worker shutting down...")
-			return
+			return nil
 		default:
 		}
 
@@ -56,7 +57,7 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 		if err != nil {
 			if err == context.Canceled {
 				log.Println("Worker shutting down...")
-				return
+				return nil
 			}
 			if err == redis.Nil {
 				continue
@@ -78,7 +79,7 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 			select {
 			case <-ctx.Done():
 				log.Println("Worker shutting down...")
-				return
+				return nil
 			case <-time.After(retryInterval):
 			}
 			continue
@@ -92,24 +93,21 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 					rdb.XAck(ctx, streamName, groupName, message.ID)
 					continue
 				}
-				targetURL, ok := message.Values["target_url"].(string)
+				payloadMsg, ok := message.Values["payload"].(string)
 				if !ok {
-					log.Printf("Error: target_url not found or not a string in message %s", message.ID)
+					log.Printf("Error: payload not found or not a string in message %s", message.ID)
 					rdb.XAck(ctx, streamName, groupName, message.ID)
 					continue
 				}
-
-				var opts models.CrawlOptions
-				if optsStr, ok := message.Values["options"].(string); ok {
-					if err := json.Unmarshal([]byte(optsStr), &opts); err != nil {
-						log.Printf("Error unmarshaling options for job %s: %v", jobID, err)
-						// Proceed with default/empty options or fail? Proceeding for now.
-					}
+				var msg CrawlMessage
+				if err := json.Unmarshal([]byte(payloadMsg), &msg); err != nil {
+					log.Printf("Error unmarshaling options for job %s: %v", jobID, err)
+					continue
 				}
 
 				rdb.HSet(ctx, "job:"+jobID, "status", "running")
 
-				err := process(ctx, jobID, targetURL, opts)
+				err := process(ctx, jobID, msg.Archive, msg.Options)
 
 				if err != nil {
 					rdb.HSet(ctx, "job:"+jobID, "status", "failed", "error", err.Error())

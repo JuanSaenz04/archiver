@@ -1,54 +1,103 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
+	"github.com/JuanSaenz04/archiver/internal/store"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	_ "modernc.org/sqlite"
 )
 
-func TestHandleGetArchives(t *testing.T) {
-	// 1. Setup temporary directory for archives
-	tempDir := t.TempDir()
+func openArchiveStore(t *testing.T) (*store.ArchiveStore, string) {
+	t.Helper()
 
-	// 2. Create dummy archive files
-	expectedArchives := []string{"archive1.wacz", "archive2.wacz"}
-	for _, name := range expectedArchives {
-		file, err := os.Create(filepath.Join(tempDir, name))
-		if err != nil {
-			t.Fatalf("Failed to create dummy archive file: %v", err)
-		}
-		file.Close()
-	}
-	// Create a non-wacz file to ensure it's ignored
-	ignoredFile, err := os.Create(filepath.Join(tempDir, "ignored.txt"))
+	dbPath := filepath.Join(t.TempDir(), "archiver.db")
+	s, err := store.Open(dbPath)
 	if err != nil {
-		t.Fatalf("Failed to create ignored file: %v", err)
-	}
-	ignoredFile.Close()
-
-	// 3. Initialize Handler
-	// We pass nil for redis client since GetArchives doesn't use it
-	handler := &Handler{
-		archivesDir: tempDir,
+		t.Fatalf("open store: %v", err)
 	}
 
-	// 4. Setup Echo context
+	if err := s.RunMigrations(); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil && !strings.Contains(err.Error(), "database is closed") {
+			t.Fatalf("close store: %v", err)
+		}
+	})
+
+	return s, dbPath
+}
+
+func insertArchiveFixture(t *testing.T, s *store.ArchiveStore, archive models.Archive) {
+	t.Helper()
+
+	if err := s.Insert(context.Background(), archive); err != nil {
+		t.Fatalf("insert archive fixture: %v", err)
+	}
+}
+
+func countArchiveByName(t *testing.T, s *store.ArchiveStore, name string) int {
+	t.Helper()
+
+	archives, err := s.List(context.Background())
+	if err != nil {
+		t.Fatalf("list archives: %v", err)
+	}
+
+	count := 0
+	for _, archive := range archives {
+		if archive.Name == name {
+			count++
+		}
+	}
+
+	return count
+}
+
+func TestHandleGetArchives(t *testing.T) {
+	archiveStore, _ := openArchiveStore(t)
+	handler := &Handler{archiveStore: archiveStore}
 	e := echo.New()
+
+	insertArchiveFixture(t, archiveStore, models.Archive{
+		ID:          uuid.New(),
+		Name:        "archive1.wacz",
+		Description: "first",
+		SourceURL:   "https://one.example",
+		Tags:        []string{"news"},
+		CreatedAt:   time.Date(2026, 3, 30, 10, 0, 0, 0, time.UTC),
+		SizeBytes:   1536,
+	})
+	insertArchiveFixture(t, archiveStore, models.Archive{
+		ID:          uuid.New(),
+		Name:        "archive2.wacz",
+		Description: "second",
+		SourceURL:   "https://two.example",
+		Tags:        []string{"tech", "go"},
+		CreatedAt:   time.Date(2026, 3, 30, 11, 0, 0, 0, time.UTC),
+		SizeBytes:   3072,
+	})
+
 	req := httptest.NewRequest(http.MethodGet, "/api/archives", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	// 5. Call the handler
 	if assert.NoError(t, handler.HandleGetArchives(c)) {
-		// 6. Assertions
 		assert.Equal(t, http.StatusOK, rec.Code)
 
 		var response map[string][]models.Archive
@@ -58,12 +107,65 @@ func TestHandleGetArchives(t *testing.T) {
 		archives := response["archives"]
 		assert.Len(t, archives, 2)
 
-		// Verify the names are correct (order might vary depending on OS, so we check existence)
-		archiveNames := make([]string, len(archives))
-		for i, a := range archives {
-			archiveNames[i] = a.Name
+		names := make([]string, 0, len(archives))
+		for _, archive := range archives {
+			names = append(names, archive.Name)
 		}
-		assert.ElementsMatch(t, expectedArchives, archiveNames)
+		assert.ElementsMatch(t, []string{"archive1.wacz", "archive2.wacz"}, names)
+
+		byName := make(map[string]models.Archive, len(archives))
+		for _, archive := range archives {
+			byName[archive.Name] = archive
+		}
+		assert.Equal(t, int64(1536), byName["archive1.wacz"].SizeBytes)
+		assert.Equal(t, int64(3072), byName["archive2.wacz"].SizeBytes)
+	}
+}
+
+func TestHandleGetArchivesIncludesSizeBytesFromStoredArchiveMetadata(t *testing.T) {
+	archiveStore, dbPath := openArchiveStore(t)
+	handler := &Handler{archiveStore: archiveStore}
+	e := echo.New()
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open direct sqlite handle: %v", err)
+	}
+	defer db.Close()
+
+	archiveID := uuid.New()
+	createdAt := time.Date(2026, 3, 30, 12, 0, 0, 0, time.UTC)
+	if _, err := db.ExecContext(
+		context.Background(),
+		"INSERT INTO archives (id, name, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?);",
+		archiveID,
+		"seeded.wacz",
+		"seeded",
+		"https://seeded.example",
+		createdAt,
+		int64(8192),
+	); err != nil {
+		t.Fatalf("seed archive row: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), "INSERT INTO tags (archive_id, tag) VALUES (?, ?);", archiveID, "seed"); err != nil {
+		t.Fatalf("seed tag row: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/archives", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if assert.NoError(t, handler.HandleGetArchives(c)) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var response map[string][]models.Archive
+		err := json.Unmarshal(rec.Body.Bytes(), &response)
+		assert.NoError(t, err)
+
+		archives := response["archives"]
+		assert.Len(t, archives, 1)
+		assert.Equal(t, "seeded.wacz", archives[0].Name)
+		assert.Equal(t, int64(8192), archives[0].SizeBytes)
 	}
 }
 
@@ -74,7 +176,7 @@ func TestHandleGetArchive(t *testing.T) {
 
 	err := os.WriteFile(filepath.Join(tempDir, archiveName), content, 0644)
 	if err != nil {
-		t.Fatalf("Failed to create dummy archive: %v", err)
+		t.Fatalf("failed to create dummy archive: %v", err)
 	}
 
 	handler := &Handler{archivesDir: tempDir}
@@ -100,25 +202,52 @@ func TestHandleGetArchive(t *testing.T) {
 		c.SetParamNames("archiveName")
 		c.SetParamValues("nonexistent.wacz")
 
-		// HandleGetArchive calls c.File which might return error or handle it.
-		// In Echo, if c.File fails to find the file, it returns an error.
 		err := handler.HandleGetArchive(c)
-		assert.NoError(t, err) // Our handler catches the error and responds
+		assert.NoError(t, err)
 		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("SanitizesArchiveName", func(t *testing.T) {
+		sanitizedName := "test-archive.wacz"
+		sanitizedContent := []byte("sanitized archive content")
+		if err := os.WriteFile(filepath.Join(tempDir, sanitizedName), sanitizedContent, 0644); err != nil {
+			t.Fatalf("failed to create sanitized archive: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/archives/test%20archive", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues("test archive")
+
+		if assert.NoError(t, handler.HandleGetArchive(c)) {
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, sanitizedContent, rec.Body.Bytes())
+		}
 	})
 }
 
 func TestHandleDeleteArchive(t *testing.T) {
 	tempDir := t.TempDir()
-	handler := &Handler{archivesDir: tempDir}
+	archiveStore, _ := openArchiveStore(t)
+	handler := &Handler{archivesDir: tempDir, archiveStore: archiveStore}
 	e := echo.New()
 
 	t.Run("Success", func(t *testing.T) {
 		archiveName := "to_delete.wacz"
 		filePath := filepath.Join(tempDir, archiveName)
 		if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
-			t.Fatalf("Failed to create file: %v", err)
+			t.Fatalf("failed to create file: %v", err)
 		}
+
+		insertArchiveFixture(t, archiveStore, models.Archive{
+			ID:          uuid.New(),
+			Name:        archiveName,
+			Description: "to delete",
+			SourceURL:   "https://delete.example",
+			Tags:        []string{"tag"},
+			CreatedAt:   time.Now().UTC(),
+		})
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
 		rec := httptest.NewRecorder()
@@ -129,9 +258,10 @@ func TestHandleDeleteArchive(t *testing.T) {
 		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
 
-			// Verify file is gone
-			_, err := os.Stat(filePath)
-			assert.True(t, os.IsNotExist(err), "File should be deleted")
+			_, statErr := os.Stat(filePath)
+			assert.True(t, errors.Is(statErr, os.ErrNotExist), "file should be deleted")
+
+			assert.Equal(t, 0, countArchiveByName(t, archiveStore, archiveName))
 		}
 	})
 
@@ -147,20 +277,54 @@ func TestHandleDeleteArchive(t *testing.T) {
 			assert.Equal(t, http.StatusNotFound, rec.Code)
 		}
 	})
+
+	t.Run("DBNotFoundRollsBackFile", func(t *testing.T) {
+		archiveName := "file_only.wacz"
+		filePath := filepath.Join(tempDir, archiveName)
+		if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues(archiveName)
+
+		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
+			assert.Equal(t, http.StatusNotFound, rec.Code)
+
+			_, statErr := os.Stat(filePath)
+			assert.NoError(t, statErr, "file should be restored on DB delete failure")
+		}
+	})
 }
 
 func TestHandleModifyArchiveName(t *testing.T) {
 	tempDir := t.TempDir()
-	handler := &Handler{archivesDir: tempDir}
+	archiveStore, _ := openArchiveStore(t)
+	handler := &Handler{archivesDir: tempDir, archiveStore: archiveStore}
 	e := echo.New()
 
 	t.Run("Success", func(t *testing.T) {
 		oldName := "old.wacz"
 		newName := "new.wacz"
+		archiveID := uuid.New()
 		filePath := filepath.Join(tempDir, oldName)
-		os.WriteFile(filePath, []byte("content"), 0644)
+		if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+			t.Fatalf("write old file: %v", err)
+		}
 
-		body, _ := json.Marshal(map[string]string{"name": "new"})
+		insertArchiveFixture(t, archiveStore, models.Archive{
+			ID:          archiveID,
+			Name:        oldName,
+			Description: "old description",
+			SourceURL:   "https://old.example",
+			Tags:        []string{"old"},
+			CreatedAt:   time.Now().UTC(),
+		})
+
+		body, _ := json.Marshal(map[string]any{"name": "new", "description": "new description", "tags": []string{"news", "2026"}})
 		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+oldName, strings.NewReader(string(body)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
@@ -168,25 +332,95 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		c.SetParamNames("archiveName")
 		c.SetParamValues(oldName)
 
-		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
 
-			// Verify old is gone and new exists
 			_, err := os.Stat(filepath.Join(tempDir, oldName))
-			assert.True(t, os.IsNotExist(err))
+			assert.True(t, errors.Is(err, os.ErrNotExist))
 			_, err = os.Stat(filepath.Join(tempDir, newName))
 			assert.NoError(t, err)
+
+			assert.Equal(t, 0, countArchiveByName(t, archiveStore, oldName))
+			assert.Equal(t, 1, countArchiveByName(t, archiveStore, newName))
+
+			archives, err := archiveStore.List(context.Background())
+			if assert.NoError(t, err) {
+				assert.Len(t, archives, 1)
+				assert.Equal(t, archiveID, archives[0].ID)
+				assert.Equal(t, newName, archives[0].Name)
+				assert.Equal(t, "new description", archives[0].Description)
+				assert.ElementsMatch(t, []string{"news", "2026"}, archives[0].Tags)
+			}
+		}
+	})
+
+	t.Run("UpdatesDescriptionAndTagsWithoutRenaming", func(t *testing.T) {
+		name := "metadata-only.wacz"
+		archiveID := uuid.New()
+		filePath := filepath.Join(tempDir, name)
+		if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+
+		insertArchiveFixture(t, archiveStore, models.Archive{
+			ID:          archiveID,
+			Name:        name,
+			Description: "before",
+			SourceURL:   "https://metadata.example",
+			Tags:        []string{"old", "tags"},
+			CreatedAt:   time.Now().UTC(),
+		})
+
+		body, _ := json.Marshal(map[string]any{"name": "metadata-only", "description": "after", "tags": []string{"updated"}})
+		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+name, strings.NewReader(string(body)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("archiveName")
+		c.SetParamValues(name)
+
+		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
+			assert.Equal(t, http.StatusNoContent, rec.Code)
+
+			_, err := os.Stat(filePath)
+			assert.NoError(t, err)
+
+			archives, err := archiveStore.List(context.Background())
+			if assert.NoError(t, err) {
+				var got *models.Archive
+				for i := range archives {
+					if archives[i].ID == archiveID {
+						got = &archives[i]
+						break
+					}
+				}
+				if assert.NotNil(t, got) {
+					assert.Equal(t, name, got.Name)
+					assert.Equal(t, "after", got.Description)
+					assert.ElementsMatch(t, []string{"updated"}, got.Tags)
+				}
+			}
 		}
 	})
 
 	t.Run("Sanitization", func(t *testing.T) {
 		oldName := "san.wacz"
-		// "my new name" -> "my-new-name.wacz"
 		expectedName := "my-new-name.wacz"
 		filePath := filepath.Join(tempDir, oldName)
-		os.WriteFile(filePath, []byte("content"), 0644)
+		if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+			t.Fatalf("write old file: %v", err)
+		}
 
-		body, _ := json.Marshal(map[string]string{"name": "my new name"})
+		insertArchiveFixture(t, archiveStore, models.Archive{
+			ID:          uuid.New(),
+			Name:        oldName,
+			Description: "san",
+			SourceURL:   "https://san.example",
+			Tags:        []string{},
+			CreatedAt:   time.Now().UTC(),
+		})
+
+		body, _ := json.Marshal(map[string]any{"name": "my new name", "description": "sanitized", "tags": []string{"san"}})
 		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+oldName, strings.NewReader(string(body)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
@@ -194,20 +428,44 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		c.SetParamNames("archiveName")
 		c.SetParamValues(oldName)
 
-		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
 			_, err := os.Stat(filepath.Join(tempDir, expectedName))
 			assert.NoError(t, err)
+			assert.Equal(t, 1, countArchiveByName(t, archiveStore, expectedName))
+
+			archives, err := archiveStore.List(context.Background())
+			if assert.NoError(t, err) {
+				for _, archive := range archives {
+					if archive.Name == expectedName {
+						assert.Equal(t, "sanitized", archive.Description)
+						assert.ElementsMatch(t, []string{"san"}, archive.Tags)
+					}
+				}
+			}
 		}
 	})
 
-	t.Run("Conflict", func(t *testing.T) {
+	t.Run("ConflictByExistingFile", func(t *testing.T) {
 		oldName := "source.wacz"
 		existingName := "existing.wacz"
-		os.WriteFile(filepath.Join(tempDir, oldName), []byte("content"), 0644)
-		os.WriteFile(filepath.Join(tempDir, existingName), []byte("content"), 0644)
+		if err := os.WriteFile(filepath.Join(tempDir, oldName), []byte("content"), 0644); err != nil {
+			t.Fatalf("write source file: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(tempDir, existingName), []byte("content"), 0644); err != nil {
+			t.Fatalf("write existing file: %v", err)
+		}
 
-		body, _ := json.Marshal(map[string]string{"name": "existing.wacz"})
+		insertArchiveFixture(t, archiveStore, models.Archive{
+			ID:          uuid.New(),
+			Name:        oldName,
+			Description: "source",
+			SourceURL:   "https://source.example",
+			Tags:        []string{},
+			CreatedAt:   time.Now().UTC(),
+		})
+
+		body, _ := json.Marshal(map[string]any{"name": "existing.wacz", "description": "conflict", "tags": []string{"x"}})
 		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+oldName, strings.NewReader(string(body)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
@@ -215,13 +473,13 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		c.SetParamNames("archiveName")
 		c.SetParamValues(oldName)
 
-		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusConflict, rec.Code)
 		}
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
-		body, _ := json.Marshal(map[string]string{"name": "really-missing.wacz"})
+		body, _ := json.Marshal(map[string]any{"name": "really-missing.wacz", "description": "missing", "tags": []string{"x"}})
 		req := httptest.NewRequest(http.MethodPut, "/api/archives/missing.wacz", strings.NewReader(string(body)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
@@ -229,8 +487,108 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		c.SetParamNames("archiveName")
 		c.SetParamValues("missing.wacz")
 
-		if assert.NoError(t, handler.HandleModifyArchiveName(c)) {
+		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusNotFound, rec.Code)
 		}
 	})
+}
+
+func TestHandleModifyArchiveNameDatabaseConflictRollsBackFile(t *testing.T) {
+	tempDir := t.TempDir()
+	archiveStore, _ := openArchiveStore(t)
+	handler := &Handler{archivesDir: tempDir, archiveStore: archiveStore}
+	e := echo.New()
+
+	oldName := "old-db-conflict.wacz"
+	targetName := "target-db-conflict.wacz"
+
+	if err := os.WriteFile(filepath.Join(tempDir, oldName), []byte("content"), 0644); err != nil {
+		t.Fatalf("write old file: %v", err)
+	}
+
+	insertArchiveFixture(t, archiveStore, models.Archive{
+		ID:          uuid.New(),
+		Name:        oldName,
+		Description: "old",
+		SourceURL:   "https://old.example",
+		Tags:        []string{},
+		CreatedAt:   time.Now().UTC(),
+	})
+	insertArchiveFixture(t, archiveStore, models.Archive{
+		ID:          uuid.New(),
+		Name:        targetName,
+		Description: "target",
+		SourceURL:   "https://target.example",
+		Tags:        []string{},
+		CreatedAt:   time.Now().UTC(),
+	})
+
+	body, _ := json.Marshal(map[string]any{"name": targetName, "description": "should fail", "tags": []string{"x"}})
+	req := httptest.NewRequest(http.MethodPut, "/api/archives/"+oldName, strings.NewReader(string(body)))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("archiveName")
+	c.SetParamValues(oldName)
+
+	if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
+		assert.Equal(t, http.StatusConflict, rec.Code)
+
+		_, err := os.Stat(filepath.Join(tempDir, oldName))
+		assert.NoError(t, err, "old file should be restored on DB conflict")
+
+		_, err = os.Stat(filepath.Join(tempDir, targetName))
+		assert.True(t, errors.Is(err, os.ErrNotExist), "target file should not be created on DB conflict")
+	}
+}
+
+func TestHandleDeleteArchiveDatabaseErrorRollsBackFile(t *testing.T) {
+	tempDir := t.TempDir()
+	archiveStore, dbPath := openArchiveStore(t)
+	handler := &Handler{archivesDir: tempDir, archiveStore: archiveStore}
+	e := echo.New()
+
+	archiveName := "rollback-delete.wacz"
+	filePath := filepath.Join(tempDir, archiveName)
+	if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	insertArchiveFixture(t, archiveStore, models.Archive{
+		ID:          uuid.New(),
+		Name:        archiveName,
+		Description: "to rollback",
+		SourceURL:   "https://rollback.example",
+		Tags:        []string{},
+		CreatedAt:   time.Now().UTC(),
+	})
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open direct sqlite handle: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.ExecContext(context.Background(), "DROP TABLE archives;"); err != nil {
+		t.Fatalf("drop archives table: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("archiveName")
+	c.SetParamValues(archiveName)
+
+	if assert.NoError(t, handler.HandleDeleteArchive(c)) {
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+		_, statErr := os.Stat(filePath)
+		assert.NoError(t, statErr, "file should be restored on DB failure")
+	}
+}
+
+func TestArchiveStoreNameConflictTypeIsMatched(t *testing.T) {
+	err := store.ErrArchiveNameConflict
+	assert.True(t, errors.Is(err, store.ErrArchiveNameConflict))
+	assert.False(t, errors.Is(err, sql.ErrNoRows))
 }

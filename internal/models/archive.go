@@ -1,5 +1,17 @@
 package models
 
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
 type Archive struct {
-	Name string `json:"name"`
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	SourceURL   string    `json:"source_url"`
+	Tags        []string  `json:"tags"`
+	CreatedAt   time.Time `json:"created_at"`
+	SizeBytes   int64     `json:"size_bytes"`
 }

@@ -10,11 +10,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func EnqueueCrawl(ctx context.Context, rdb *redis.Client, targetURL string, options models.CrawlOptions) (*uuid.UUID, error) {
+func EnqueueCrawl(ctx context.Context, rdb *redis.Client, request models.CrawlRequest) (*uuid.UUID, error) {
 	jobID := uuid.New()
 
 	err := rdb.HSet(ctx, "job:"+jobID.String(), map[string]interface{}{
-		"url":        targetURL,
+		"url":        request.URL,
 		"status":     "pending",
 		"created_at": time.Now().Format(time.RFC3339),
 	}).Err()
@@ -27,7 +27,21 @@ func EnqueueCrawl(ctx context.Context, rdb *redis.Client, targetURL string, opti
 		return nil, err
 	}
 
-	optsBytes, err := json.Marshal(options)
+	archive := models.Archive{
+		ID:          jobID,
+		Name:        request.Name,
+		Description: request.Description,
+		SourceURL:   request.URL,
+		Tags:        request.Tags,
+	}
+
+	msg := CrawlMessage{
+		JobID:   jobID.String(),
+		Options: request.Options,
+		Archive: archive,
+	}
+
+	msgBytes, err := json.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}
@@ -35,10 +49,8 @@ func EnqueueCrawl(ctx context.Context, rdb *redis.Client, targetURL string, opti
 	err = rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: "crawl_stream",
 		Values: map[string]interface{}{
-			"job_id":     jobID.String(),
-			"target_url": targetURL,
-			"options":    string(optsBytes),
-			"created_at": time.Now().Format(time.RFC3339),
+			"job_id":  jobID.String(),
+			"payload": string(msgBytes),
 		},
 	}).Err()
 
