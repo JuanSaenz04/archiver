@@ -17,6 +17,11 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: 'stable'
+        
+    - name: Create dummy dist folder
+      run: |
+        mkdir -p internal/api/dist
+        touch internal/api/dist/placeholder.txt
 
     - name: Install dependencies
       run: go mod download
