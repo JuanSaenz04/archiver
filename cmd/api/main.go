@@ -109,6 +109,10 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
+		if closeErr := e.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+			return fmt.Errorf("shutdown api server: %w", errors.Join(err, fmt.Errorf("force close api server: %w", closeErr)))
+		}
+
 		return fmt.Errorf("shutdown api server: %w", err)
 	}
 

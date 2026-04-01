@@ -91,7 +91,9 @@ func run() error {
 
 	slog.Info("starting worker", "timeout_seconds", timeoutSeconds, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
 
-	queue.StartWorker(ctx, rdb, crawler.Run)
+	if err := queue.StartWorker(ctx, rdb, crawler.Run); err != nil {
+		return fmt.Errorf("start worker: %w", err)
+	}
 
 	slog.Info("worker stopped gracefully")
 	return nil

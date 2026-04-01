@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -30,9 +31,9 @@ func ensureStreamAndGroup(ctx context.Context, rdb *redis.Client) error {
 
 // StartWorker starts the worker loop to consume jobs from Redis.
 // On any error it retries after retryInterval indefinitely.
-func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
+func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) error {
 	if err := ensureStreamAndGroup(ctx, rdb); err != nil {
-		log.Fatalf("Failed to create consumer group on startup: %v", err)
+		return fmt.Errorf("create consumer group on startup: %w", err)
 	}
 
 	log.Println("Worker started, waiting for jobs...")
@@ -41,7 +42,7 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 		select {
 		case <-ctx.Done():
 			log.Println("Worker shutting down...")
-			return
+			return nil
 		default:
 		}
 
@@ -56,7 +57,7 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 		if err != nil {
 			if err == context.Canceled {
 				log.Println("Worker shutting down...")
-				return
+				return nil
 			}
 			if err == redis.Nil {
 				continue
@@ -78,7 +79,7 @@ func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) {
 			select {
 			case <-ctx.Done():
 				log.Println("Worker shutting down...")
-				return
+				return nil
 			case <-time.After(retryInterval):
 			}
 			continue
