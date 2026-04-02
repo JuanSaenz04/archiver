@@ -2,9 +2,7 @@ package api
 
 import (
 	"embed"
-	"io/fs"
-	"log"
-	"net/http"
+	"errors"
 	"strings"
 
 	"github.com/labstack/echo/v5"
@@ -32,13 +30,7 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 	apiGroup.DELETE("/archives/:archiveName", handler.HandleDeleteArchive)
 	apiGroup.PUT("/archives/:archiveName", handler.HandleModifyArchiveMetadata)
 
-	dist, err := fs.Sub(frontendDist, "dist")
-	if err != nil {
-		// This should only happen if the embed fails drastically, which is unlikely with correct build
-		log.Fatal(err)
-	}
-
-	fileHandler := http.FileServer(http.FS(dist))
+	dist := echo.MustSubFS(frontendDist, "dist")
 
 	e.GET("/*", func(c *echo.Context) error {
 		path := c.Request().URL.Path
@@ -54,16 +46,14 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 			cleanPath = "index.html"
 		}
 
-		// Check if file exists in the embedded FS
-		_, err := dist.Open(cleanPath)
-		if err == nil {
-			fileHandler.ServeHTTP(c.Response(), c.Request())
-			return nil
+		if err := c.FileFS(cleanPath, dist); err != nil {
+			if errors.Is(err, echo.ErrNotFound) {
+				// Fallback to index.html
+				return c.FileFS("index.html", dist)
+			}
+			return err
 		}
 
-		// Fallback to index.html for SPA routing
-		c.Request().URL.Path = "/"
-		fileHandler.ServeHTTP(c.Response(), c.Request())
 		return nil
 	})
 }
