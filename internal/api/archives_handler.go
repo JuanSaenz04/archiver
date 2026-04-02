@@ -36,7 +36,7 @@ func (handler *Handler) HandleGetArchive(c *echo.Context) error {
 
 	path := filepath.Join(handler.archivesDir, archiveName)
 
-	err := c.FileFS(path, echo.NewDefaultFS(handler.archivesDir))
+	err := c.FileFS(archiveName, echo.NewDefaultFS(handler.archivesDir))
 	if err != nil {
 		slog.Warn("archive file not found", "archive_name", archiveName, "path", path, "error", err)
 		return respondWithError(http.StatusNotFound, "Archive not found", c)
