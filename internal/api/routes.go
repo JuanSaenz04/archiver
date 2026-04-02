@@ -3,6 +3,7 @@ package api
 import (
 	"embed"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/labstack/echo/v5"
@@ -18,6 +19,20 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Skipper: func(c *echo.Context) bool {
 			return strings.HasPrefix(c.Request().URL.Path, "/api/archives/")
+		},
+	}))
+
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:   true,
+		LogURI:      true,
+		LogRemoteIP: true,
+		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
+			slog.Info("request",
+				"uri", v.URI,
+				"status", v.Status,
+				"remote_ip", v.RemoteIP,
+			)
+			return nil
 		},
 	}))
 
