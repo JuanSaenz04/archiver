@@ -6,10 +6,10 @@ import (
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/queue"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (handler *Handler) HandleNewJob(c echo.Context) error {
+func (handler *Handler) HandleNewJob(c *echo.Context) error {
 	job := &models.CrawlRequest{}
 
 	if err := c.Bind(job); err != nil {
@@ -31,7 +31,7 @@ func (handler *Handler) HandleNewJob(c echo.Context) error {
 	})
 }
 
-func (handler *Handler) HandleGetJobs(c echo.Context) error {
+func (handler *Handler) HandleGetJobs(c *echo.Context) error {
 	jobs, err := handler.jobRepo.GetAllJobs(c.Request().Context())
 
 	if err != nil {

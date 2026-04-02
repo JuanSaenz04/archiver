@@ -16,7 +16,7 @@ import (
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	_ "modernc.org/sqlite"
 )
@@ -186,8 +186,13 @@ func TestHandleGetArchive(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/archives/"+archiveName, nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(archiveName)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: archiveName,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleGetArchive(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
@@ -199,8 +204,13 @@ func TestHandleGetArchive(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/archives/nonexistent.wacz", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues("nonexistent.wacz")
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: "nonexistent.wacz",
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		err := handler.HandleGetArchive(c)
 		assert.NoError(t, err)
@@ -217,8 +227,13 @@ func TestHandleGetArchive(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/archives/test%20archive", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues("test archive")
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: "test archive",
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleGetArchive(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
@@ -252,8 +267,13 @@ func TestHandleDeleteArchive(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(archiveName)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: archiveName,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -270,8 +290,13 @@ func TestHandleDeleteArchive(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(archiveName)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: archiveName,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
 			assert.Equal(t, http.StatusNotFound, rec.Code)
@@ -288,8 +313,13 @@ func TestHandleDeleteArchive(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(archiveName)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: archiveName,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleDeleteArchive(c)) {
 			assert.Equal(t, http.StatusNotFound, rec.Code)
@@ -329,8 +359,13 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(oldName)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: oldName,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -376,8 +411,13 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(name)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: name,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -425,8 +465,13 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(oldName)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: oldName,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -470,8 +515,13 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues(oldName)
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: oldName,
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusConflict, rec.Code)
@@ -484,8 +534,13 @@ func TestHandleModifyArchiveName(t *testing.T) {
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetParamNames("archiveName")
-		c.SetParamValues("missing.wacz")
+		pathValues := []echo.PathValue{
+			{
+				Name:  "archiveName",
+				Value: "missing.wacz",
+			},
+		}
+		c.SetPathValues(pathValues)
 
 		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 			assert.Equal(t, http.StatusNotFound, rec.Code)
@@ -528,8 +583,13 @@ func TestHandleModifyArchiveNameDatabaseConflictRollsBackFile(t *testing.T) {
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("archiveName")
-	c.SetParamValues(oldName)
+	pathValues := []echo.PathValue{
+		{
+			Name:  "archiveName",
+			Value: oldName,
+		},
+	}
+	c.SetPathValues(pathValues)
 
 	if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
 		assert.Equal(t, http.StatusConflict, rec.Code)
@@ -576,8 +636,13 @@ func TestHandleDeleteArchiveDatabaseErrorRollsBackFile(t *testing.T) {
 	req := httptest.NewRequest(http.MethodDelete, "/api/archives/"+archiveName, nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("archiveName")
-	c.SetParamValues(archiveName)
+	pathValues := []echo.PathValue{
+		{
+			Name:  "archiveName",
+			Value: archiveName,
+		},
+	}
+	c.SetPathValues(pathValues)
 
 	if assert.NoError(t, handler.HandleDeleteArchive(c)) {
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)

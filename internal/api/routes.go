@@ -3,11 +3,12 @@ package api
 import (
 	"embed"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
 //go:embed dist
@@ -17,7 +18,7 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 	// Enable Gzip compression for frontend assets and JSON API,
 	// but skip it for archive downloads to support HTTP Range requests.
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-		Skipper: func(c echo.Context) bool {
+		Skipper: func(c *echo.Context) bool {
 			return strings.HasPrefix(c.Request().URL.Path, "/api/archives/")
 		},
 	}))
@@ -34,12 +35,12 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 	dist, err := fs.Sub(frontendDist, "dist")
 	if err != nil {
 		// This should only happen if the embed fails drastically, which is unlikely with correct build
-		e.Logger.Fatal(err)
+		log.Fatal(err)
 	}
 
 	fileHandler := http.FileServer(http.FS(dist))
 
-	e.GET("/*", func(c echo.Context) error {
+	e.GET("/*", func(c *echo.Context) error {
 		path := c.Request().URL.Path
 
 		// API requests should not fallback to index.html

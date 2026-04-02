@@ -15,7 +15,7 @@ import (
 
 	"github.com/JuanSaenz04/archiver/internal/api"
 	"github.com/JuanSaenz04/archiver/internal/store"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -92,10 +92,15 @@ func run() error {
 
 	handler.SetRoutes(e)
 
+	sc := echo.StartConfig{
+		Address:         ":1080",
+		GracefulTimeout: 10 * time.Second,
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("starting api server", "addr", ":1080", "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
-		if err := e.Start(":1080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := sc.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- fmt.Errorf("start api server: %w", err)
 		}
 	}()
@@ -104,16 +109,6 @@ func run() error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := e.Shutdown(shutdownCtx); err != nil {
-		if closeErr := e.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
-			return fmt.Errorf("shutdown api server: %w", errors.Join(err, fmt.Errorf("force close api server: %w", closeErr)))
-		}
-
-		return fmt.Errorf("shutdown api server: %w", err)
 	}
 
 	slog.Info("server stopped gracefully")

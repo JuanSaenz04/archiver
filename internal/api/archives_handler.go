@@ -11,10 +11,10 @@ import (
 	"github.com/JuanSaenz04/archiver/internal/archiveutil"
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (handler *Handler) HandleGetArchives(c echo.Context) error {
+func (handler *Handler) HandleGetArchives(c *echo.Context) error {
 	archives, err := handler.archiveStore.List(c.Request().Context())
 	if err != nil {
 		slog.Error("failed to list archives", "error", err)
@@ -28,7 +28,7 @@ func (handler *Handler) HandleGetArchives(c echo.Context) error {
 	})
 }
 
-func (handler *Handler) HandleGetArchive(c echo.Context) error {
+func (handler *Handler) HandleGetArchive(c *echo.Context) error {
 	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
 	if !ok {
 		return respondWithError(http.StatusNotFound, "Archive not found", c)
@@ -36,7 +36,7 @@ func (handler *Handler) HandleGetArchive(c echo.Context) error {
 
 	path := filepath.Join(handler.archivesDir, archiveName)
 
-	err := c.File(path)
+	err := c.FileFS(path, echo.NewDefaultFS(handler.archivesDir))
 	if err != nil {
 		slog.Warn("archive file not found", "archive_name", archiveName, "path", path, "error", err)
 		return respondWithError(http.StatusNotFound, "Archive not found", c)
@@ -47,7 +47,7 @@ func (handler *Handler) HandleGetArchive(c echo.Context) error {
 	return nil
 }
 
-func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
+func (handler *Handler) HandleDeleteArchive(c *echo.Context) error {
 	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
 	if !ok {
 		return respondWithError(http.StatusNotFound, "Archive not found", c)
@@ -97,7 +97,7 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-func (handler *Handler) HandleModifyArchiveMetadata(c echo.Context) error {
+func (handler *Handler) HandleModifyArchiveMetadata(c *echo.Context) error {
 	newArchive := &models.Archive{}
 
 	if err := c.Bind(newArchive); err != nil {
