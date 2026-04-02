@@ -22,21 +22,43 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 		},
 	}))
 
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+	apiGroup := e.Group("/api")
+
+	apiGroup.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogStatus:   true,
 		LogURI:      true,
 		LogRemoteIP: true,
+		LogMethod:   true,
+		LogLatency:  true,
 		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
-			slog.Info("request",
-				"uri", v.URI,
-				"status", v.Status,
-				"remote_ip", v.RemoteIP,
-			)
+			if v.Status < 400 {
+				slog.Info("request",
+					"method", v.Method,
+					"uri", v.URI,
+					"status", v.Status,
+					"remote_ip", v.RemoteIP,
+					"latency", v.Latency,
+				)
+			} else if v.Status < 500 {
+				slog.Warn("request",
+					"method", v.Method,
+					"uri", v.URI,
+					"status", v.Status,
+					"remote_ip", v.RemoteIP,
+					"latency", v.Latency,
+				)
+			} else {
+				slog.Error("request",
+					"method", v.Method,
+					"uri", v.URI,
+					"status", v.Status,
+					"remote_ip", v.RemoteIP,
+					"latency", v.Latency,
+				)
+			}
 			return nil
 		},
 	}))
-
-	apiGroup := e.Group("/api")
 
 	apiGroup.POST("/jobs", handler.HandleNewJob)
 	apiGroup.GET("/jobs", handler.HandleGetJobs)
