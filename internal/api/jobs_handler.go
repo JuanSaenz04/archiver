@@ -6,14 +6,13 @@ import (
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/queue"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (handler *Handler) HandleNewJob(c echo.Context) error {
+func (handler *Handler) HandleNewJob(c *echo.Context) error {
 	job := &models.CrawlRequest{}
 
 	if err := c.Bind(job); err != nil {
-		slog.Warn("failed to bind new job request", "error", err)
 		return respondWithError(http.StatusBadRequest, "Bad request", c)
 	}
 
@@ -31,15 +30,13 @@ func (handler *Handler) HandleNewJob(c echo.Context) error {
 	})
 }
 
-func (handler *Handler) HandleGetJobs(c echo.Context) error {
+func (handler *Handler) HandleGetJobs(c *echo.Context) error {
 	jobs, err := handler.jobRepo.GetAllJobs(c.Request().Context())
 
 	if err != nil {
 		slog.Error("failed to list jobs", "error", err)
 		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
 	}
-
-	slog.Debug("jobs listed", "count", len(jobs))
 
 	return c.JSON(http.StatusOK, jobs)
 }

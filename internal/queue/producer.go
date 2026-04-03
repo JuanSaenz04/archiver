@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
@@ -53,6 +54,9 @@ func EnqueueCrawl(ctx context.Context, rdb *redis.Client, request models.CrawlRe
 			"payload": string(msgBytes),
 		},
 	}).Err()
+	if err != nil {
+		return nil, fmt.Errorf("enqueue crawl job: %w", err)
+	}
 
-	return &jobID, err
+	return &jobID, nil
 }

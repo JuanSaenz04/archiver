@@ -11,43 +11,36 @@ import (
 	"github.com/JuanSaenz04/archiver/internal/archiveutil"
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (handler *Handler) HandleGetArchives(c echo.Context) error {
+func (handler *Handler) HandleGetArchives(c *echo.Context) error {
 	archives, err := handler.archiveStore.List(c.Request().Context())
 	if err != nil {
 		slog.Error("failed to list archives", "error", err)
 		return respondWithError(http.StatusInternalServerError, "Internal Server Error", c)
 	}
 
-	slog.Debug("archives listed", "count", len(archives))
-
 	return c.JSON(http.StatusOK, map[string]any{
 		"archives": archives,
 	})
 }
 
-func (handler *Handler) HandleGetArchive(c echo.Context) error {
+func (handler *Handler) HandleGetArchive(c *echo.Context) error {
 	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
 	if !ok {
 		return respondWithError(http.StatusNotFound, "Archive not found", c)
 	}
 
-	path := filepath.Join(handler.archivesDir, archiveName)
-
-	err := c.File(path)
+	err := c.FileFS(archiveName, echo.NewDefaultFS(handler.archivesDir))
 	if err != nil {
-		slog.Warn("archive file not found", "archive_name", archiveName, "path", path, "error", err)
 		return respondWithError(http.StatusNotFound, "Archive not found", c)
 	}
-
-	slog.Debug("archive file served", "archive_name", archiveName, "path", path)
 
 	return nil
 }
 
-func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
+func (handler *Handler) HandleDeleteArchive(c *echo.Context) error {
 	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
 	if !ok {
 		return respondWithError(http.StatusNotFound, "Archive not found", c)
@@ -65,7 +58,6 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 
 	if err := os.Rename(path, tempArchiveName); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			slog.Warn("archive file not found for delete", "archive_name", archiveName, "path", path)
 			return respondWithError(http.StatusNotFound, "Archive not found", c)
 		}
 
@@ -80,7 +72,6 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 		}
 
 		if errors.Is(err, store.ErrArchiveNotFound) {
-			slog.Warn("archive metadata not found during delete", "archive_name", archiveName)
 			return respondWithError(http.StatusNotFound, "Archive not found", c)
 		}
 
@@ -97,17 +88,15 @@ func (handler *Handler) HandleDeleteArchive(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-func (handler *Handler) HandleModifyArchiveMetadata(c echo.Context) error {
+func (handler *Handler) HandleModifyArchiveMetadata(c *echo.Context) error {
 	newArchive := &models.Archive{}
 
 	if err := c.Bind(newArchive); err != nil {
-		slog.Warn("failed to bind rename request", "error", err)
 		return respondWithError(http.StatusBadRequest, "Malformed request", c)
 	}
 
 	newName, ok := archiveutil.NormalizeArchiveName(newArchive.Name)
 	if !ok {
-		slog.Warn("invalid archive rename request", "requested_name", newArchive.Name)
 		return respondWithError(http.StatusBadRequest, "Malformed request", c)
 	}
 
@@ -122,13 +111,11 @@ func (handler *Handler) HandleModifyArchiveMetadata(c echo.Context) error {
 
 	if archiveName != newName {
 		if _, err := os.Stat(newPath); err == nil {
-			slog.Warn("archive rename conflict: destination file exists", "old_name", archiveName, "new_name", newName, "new_path", newPath)
 			return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newName), c)
 		}
 
 		if err := os.Rename(path, newPath); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				slog.Warn("archive file not found for rename", "archive_name", archiveName, "path", path)
 				return respondWithError(http.StatusNotFound, "Archive not found", c)
 			}
 
@@ -144,12 +131,10 @@ func (handler *Handler) HandleModifyArchiveMetadata(c echo.Context) error {
 		}
 
 		if errors.Is(err, store.ErrArchiveNameConflict) {
-			slog.Warn("archive rename conflict in store", "old_name", archiveName, "new_name", newName)
 			return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newName), c)
 		}
 
 		if errors.Is(err, store.ErrArchiveNotFound) {
-			slog.Warn("archive metadata not found for rename", "old_name", archiveName)
 			return respondWithError(http.StatusNotFound, "Archive not found", c)
 		}
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,9 +29,13 @@ func NewCrawler(timeoutInSeconds int, archiveStore *store.ArchiveStore) *Crawler
 
 // Run executes the crawler for a specific job.
 func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error {
-	fmt.Printf("Received job with ID %s\n", jobID)
-
 	setDefaultValuesIfEmpty(&options)
+
+	slog.Info("starting crawl",
+		"job_id", jobID,
+		"url", archive.SourceURL,
+		"archive_name", archive.Name,
+	)
 
 	cmd := exec.CommandContext(
 		ctx,
@@ -53,18 +57,18 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		log.Printf("Crawl failed for %s: %v", archive.SourceURL, err)
+		slog.Error("crawl command failed", "job_id", jobID, "url", archive.SourceURL, "error", err)
 		return err
 	}
 
 	archivesDir := os.Getenv("ARCHIVES_DIR")
 	if archivesDir == "" {
-		log.Println("ARCHIVES_DIR directory not set, archives won't be persisted.")
+		slog.Warn("ARCHIVES_DIR not set, archive will not be persisted", "job_id", jobID, "url", archive.SourceURL)
 		return nil
 	}
 
 	if err := os.MkdirAll(archivesDir, 0755); err != nil {
-		log.Printf("Crawl failed for %s: %v", archive.SourceURL, err)
+		slog.Error("failed to create archives directory", "job_id", jobID, "archives_dir", archivesDir, "error", err)
 		return err
 	}
 
@@ -101,9 +105,18 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 
 	err = crawler.archiveStore.Insert(ctx, archive)
 	if err != nil {
-		os.Remove(dstPath) // Remove archive if database insertion fails
+		if removeErr := os.Remove(dstPath); removeErr != nil {
+			slog.Warn("failed to remove archive after store insert error", "job_id", jobID, "archive_name", archive.Name, "path", dstPath, "error", removeErr)
+		}
 		return err
 	}
+
+	slog.Info("archive persisted",
+		"job_id", jobID,
+		"archive_name", archive.Name,
+		"path", dstPath,
+		"size_bytes", archive.SizeBytes,
+	)
 
 	return nil
 }
