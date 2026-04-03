@@ -9,6 +9,7 @@ This document lists the environment variables used by the Archiver services (API
 | `REDIS_URL` | - | **Yes** | Connection string for the Redis/Valkey instance (e.g., `redis://localhost:6379/0`). |
 | `ARCHIVES_DIR` | - | **Yes** | Absolute path to the directory where `.wacz` archives are stored and served from. |
 | `SQLITE_DIR` | `ARCHIVES_DIR` | No | Directory where the SQLite database file (`archive.db`) is stored. If omitted, it **defaults to `ARCHIVES_DIR`**. |
+| `TRUSTED_PROXIES` | - | No | Comma separated list of reverse proxy IPs or CIDR ranges (e.g., `127.0.0.1, 172.16.0.0/24`). Setting this ensures that the logs show the **real client IP** instead of the proxy's internal IP. Leave empty if you are not using a reverse proxy. |
 | `LOG_LEVEL` | `info` | No | Logging verbosity for structured logs. Supported values: `debug`, `info`, `warn`/`warning`, `error`. |
 
 ## Worker Service
