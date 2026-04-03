@@ -37,7 +37,7 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 					"uri", v.URI,
 					"status", v.Status,
 					"remote_ip", v.RemoteIP,
-					"latency", v.Latency,
+					"latency", v.Latency.String(),
 				)
 			} else if v.Status < 500 {
 				slog.Warn("request",
@@ -45,7 +45,7 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 					"uri", v.URI,
 					"status", v.Status,
 					"remote_ip", v.RemoteIP,
-					"latency", v.Latency,
+					"latency", v.Latency.String(),
 				)
 			} else {
 				slog.Error("request",
@@ -53,7 +53,7 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 					"uri", v.URI,
 					"status", v.Status,
 					"remote_ip", v.RemoteIP,
-					"latency", v.Latency,
+					"latency", v.Latency.String(),
 				)
 			}
 			return nil
