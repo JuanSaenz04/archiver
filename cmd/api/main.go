@@ -90,6 +90,8 @@ func run() error {
 
 	e := echo.New()
 
+	e.IPExtractor = api.GetIPExtractorFromEnv()
+
 	handler.SetRoutes(e)
 
 	sc := echo.StartConfig{
