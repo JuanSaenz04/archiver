@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -37,21 +38,13 @@ type ArchiveStore struct {
 }
 
 func Open(path string) (*ArchiveStore, error) {
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		return nil, err
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
 	}
-
-	_, err = db.Exec("PRAGMA foreign_keys=ON;")
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = db.Exec("PRAGMA journal_mode=WAL;")
-	if err != nil {
-		return nil, err
-	}
-	_, err = db.Exec("PRAGMA synchronous=NORMAL;")
+	dsn := fmt.Sprintf("%s%s_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", path, separator)
+	
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
