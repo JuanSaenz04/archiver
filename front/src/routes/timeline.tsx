@@ -25,7 +25,7 @@ function TimelinePage() {
   // Fetch archives once on mount
   useEffect(() => {
     apiClient.get('/archives')
-      .then((res: any) => {
+      .then((res: unknown) => {
         const data = res as GetArchivesResponse;
         // Sort ascending by date
         const sorted = (data.archives || []).sort((a, b) => 
@@ -41,8 +41,10 @@ function TimelinePage() {
     return archives.filter(a => a.source_url.includes(submittedUrl))
   }, [archives, submittedUrl])
 
-  // Reset range when filtered archives change
-  useEffect(() => {
+  // Track previous filtered archives to detect changes and reset range during render
+  const [prevFilteredArchives, setPrevFilteredArchives] = useState(filteredArchives)
+  if (filteredArchives !== prevFilteredArchives) {
+    setPrevFilteredArchives(filteredArchives)
     if (filteredArchives.length > 0) {
       setRangeStart(new Date(filteredArchives[0].created_at))
       setRangeEnd(new Date(filteredArchives[filteredArchives.length - 1].created_at))
@@ -53,7 +55,7 @@ function TimelinePage() {
       setRangeStart(lastWeek)
       setRangeEnd(today)
     }
-  }, [filteredArchives])
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
