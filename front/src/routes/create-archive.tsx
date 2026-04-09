@@ -85,18 +85,19 @@ function CreateArchive() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-muted/20">
-      <div className="w-full max-w-lg space-y-6">
-        
-        <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/' })}>
-                <ArrowLeft className="size-5" />
-            </Button>
-            <h1 className="text-2xl font-bold tracking-tight">Create New Archive</h1>
-        </div>
+    <div className="h-full w-full overflow-y-auto bg-muted/20">
+      <div className="flex flex-col items-center min-h-full p-4 md:p-8">
+        <div className="w-full max-w-lg space-y-6 my-auto py-8">
+          
+          <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/' })}>
+                  <ArrowLeft className="size-5" />
+              </Button>
+              <h1 className="text-2xl font-bold tracking-tight">Create New Archive</h1>
+          </div>
 
-        <div className="p-6 rounded-xl border bg-card text-card-foreground shadow-sm">
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="p-6 rounded-xl border bg-card text-card-foreground shadow-sm">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 
                 {/* URL */}
                 <div className="space-y-2">
@@ -253,6 +254,7 @@ function CreateArchive() {
                 </div>
 
             </form>
+          </div>
         </div>
       </div>
     </div>
