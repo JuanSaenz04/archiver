@@ -22,7 +22,7 @@ import {
   X,
   AlertCircle
 } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { apiClient } from "@/lib/api"
 import { toast } from "sonner"
 import {
@@ -54,27 +54,37 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (archive) {
-      setEditName(archive.name.replace(".wacz", ""))
-      setEditDescription(archive.description || "")
-      setEditTags(archive.tags?.join(", ") || "")
-      setIsEditing(false)
-      setError(null)
-      // Only clear success if we are opening the dialog or switching to a DIFFERENT archive
-      // We check if success was already set to avoid clearing it immediately after rename
-    }
-  }, [archive, open])
+  if (!archive) return null
 
-  // Separate effect to clear messages when opening/closing
-  useEffect(() => {
-    if (open) {
+  const resetEditorForArchive = () => {
+    setEditName(archive.name.replace(".wacz", ""))
+    setEditDescription(archive.description || "")
+    setEditTags(archive.tags?.join(", ") || "")
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setIsEditing(false)
+      setIsDeleting(false)
       setError(null)
       setSuccess(null)
     }
-  }, [open])
 
-  if (!archive) return null
+    onOpenChange(nextOpen)
+  }
+
+  const handleStartEditing = () => {
+    resetEditorForArchive()
+    setError(null)
+    setSuccess(null)
+    setIsEditing(true)
+  }
+
+  const handleCancelEditing = () => {
+    resetEditorForArchive()
+    setError(null)
+    setIsEditing(false)
+  }
 
   const handleUpdate = async () => {
     if (!editName.trim()) {
@@ -152,7 +162,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -298,7 +308,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                 <Button 
                   variant="outline" 
                   className="flex-1" 
-                  onClick={() => setIsEditing(false)}
+                  onClick={handleCancelEditing}
                   disabled={isLoading}
                 >
                   <X className="mr-2 size-4" />
@@ -311,7 +321,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                   variant="outline" 
                   size="sm"
                   className="h-9"
-                  onClick={() => setIsEditing(true)}
+                  onClick={handleStartEditing}
                 >
                   <Pencil className="mr-2 size-4" />
                   Edit Metadata

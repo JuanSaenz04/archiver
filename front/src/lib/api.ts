@@ -1,52 +1,58 @@
-const API_URL = '/api';
+const API_URL = "/api"
 
 export const apiClient = {
-  get: async (endpoint: string) => {
-    const response = await fetch(`${API_URL}${endpoint}`);
+  get: async <T>(endpoint: string): Promise<T> => {
+    const response = await fetch(`${API_URL}${endpoint}`)
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
+      throw new Error(`API Error: ${response.statusText}`)
     }
-    return response.json();
+    return (await response.json()) as T
   },
-  post: async (endpoint: string, body: any) => {
+  post: async <TResponse, TBody = unknown>(
+    endpoint: string,
+    body: TBody,
+  ): Promise<TResponse> => {
     const response = await fetch(`${API_URL}${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    });
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`)
+      throw new Error(`API Error: ${response.statusText}`)
     }
-    return response.json();
+    return (await response.json()) as TResponse
   },
-  delete: async (endpoint: string) => {
+  delete: async <TResponse = void>(endpoint: string): Promise<TResponse | void> => {
     const response = await fetch(`${API_URL}${endpoint}`, {
-        method: 'DELETE',
-    });
+      method: "DELETE",
+    })
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
+      throw new Error(`API Error: ${response.statusText}`)
     }
     if (response.status === 204) {
-      return;
+      return
     }
-    return response.json();
+    return (await response.json()) as TResponse
   },
-  put: async (endpoint: string, body: any) => {
+  put: async <TResponse, TBody = unknown>(
+    endpoint: string,
+    body: TBody,
+  ): Promise<TResponse | void> => {
     const response = await fetch(`${API_URL}${endpoint}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    });
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`)
+      throw new Error(`API Error: ${response.statusText}`)
     }
     if (response.status === 204) {
-      return;
+      return
     }
-    return response.json();
-  }
+    return (await response.json()) as TResponse
+  },
 }

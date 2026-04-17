@@ -8,10 +8,12 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { List, RefreshCw } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { apiClient } from "@/lib/api"
-import type { Job, GetJobsResponse } from "@/models/job"
+import type { Job } from "@/models/job"
 import { cn } from "@/lib/utils"
+
+type JobsResponse = Job[] | { jobs?: Job[] }
 
 function JobCard({ job }: { job: Job }) {
   return (
@@ -41,15 +43,9 @@ export function JobsSheet() {
   const fetchJobs = async () => {
     setIsLoading(true)
     try {
-      const data = await apiClient.get('/jobs') as GetJobsResponse
+      const data = await apiClient.get<JobsResponse>('/jobs')
       
-      let jobsList: Job[] = []
-      if (Array.isArray(data)) {
-        jobsList = data
-      } else {
-        // @ts-ignore
-        jobsList = data.jobs || []
-      }
+      const jobsList = Array.isArray(data) ? data : (data.jobs ?? [])
 
       // Sort jobs by created_at descending (newest first)
       const sortedJobs = [...jobsList].sort((a, b) => 
@@ -64,14 +60,15 @@ export function JobsSheet() {
     }
   }
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchJobs()
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (open) {
+      void fetchJobs()
     }
-  }, [isOpen])
+  }
 
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
         <Button size="icon" variant="outline">
           <List />
