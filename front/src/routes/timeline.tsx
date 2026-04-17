@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useLayoutEffect } from 'react'
 import { apiClient } from '@/lib/api'
 import type { Archive, GetArchivesResponse } from '@/models/archive'
 import { Input } from '@/components/ui/input'
@@ -41,10 +41,8 @@ function TimelinePage() {
     return archives.filter(a => a.source_url.includes(submittedUrl))
   }, [archives, submittedUrl])
 
-  // Track previous filtered archives to detect changes and reset range during render
-  const [prevFilteredArchives, setPrevFilteredArchives] = useState(filteredArchives)
-  if (filteredArchives !== prevFilteredArchives) {
-    setPrevFilteredArchives(filteredArchives)
+  // Sync range when filtered archives change
+  useLayoutEffect(() => {
     if (filteredArchives.length > 0) {
       setRangeStart(new Date(filteredArchives[0].created_at))
       setRangeEnd(new Date(filteredArchives[filteredArchives.length - 1].created_at))
@@ -55,7 +53,7 @@ function TimelinePage() {
       setRangeStart(lastWeek)
       setRangeEnd(today)
     }
-  }
+  }, [filteredArchives])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()

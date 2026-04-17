@@ -69,52 +69,53 @@ export function ArchiveTimeline({
           <Button variant="outline" size="sm" onClick={() => handlePreset(365)}>1y</Button>
           <Button variant="outline" size="sm" onClick={() => handlePreset('all')}>All</Button>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="flex items-center gap-2 flex-1 sm:flex-none">
-            <span className="text-xs sm:text-sm font-medium">From:</span>
-            <Input 
-              type="date" 
-              className="flex-1 sm:w-auto h-8 text-xs sm:text-sm"
-              value={formatYMD(rangeStart)}
-              onChange={(e) => {
-                if (e.target.value) {
-                  const newStart = new Date(e.target.value + "T00:00:00") // avoid timezone issues
-                  if (!isNaN(newStart.getTime()) && newStart <= rangeEnd) {
-                    onRangeChange(newStart, rangeEnd)
-                  }
-                }
-              }}
-            />
-          </div>
-          <div className="flex items-center gap-2 flex-1 sm:flex-none">
-            <span className="text-xs sm:text-sm font-medium">To:</span>
-            <Input 
-              type="date" 
-              className="flex-1 sm:w-auto h-8 text-xs sm:text-sm"
-              value={formatYMD(rangeEnd)}
-              onChange={(e) => {
-                if (e.target.value) {
-                  const newEnd = new Date(e.target.value + "T23:59:59")
-                  if (!isNaN(newEnd.getTime()) && newEnd >= rangeStart) {
-                    onRangeChange(rangeStart, newEnd)
-                  }
-                }
-              }}
-            />
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">From:</span>
+          <Input 
+            type="date" 
+            className="w-auto h-8 text-sm"
+            value={formatYMD(rangeStart)}
+            onChange={(e) => {
+               if (e.target.value) {
+                 const newStart = new Date(e.target.value + "T00:00:00") // avoid timezone issues
+                 if (!isNaN(newStart.getTime()) && newStart <= rangeEnd) {
+                   onRangeChange(newStart, rangeEnd)
+                 }
+               }
+            }}
+          />
+          <span className="text-sm font-medium">To:</span>
+          <Input 
+            type="date" 
+            className="w-auto h-8 text-sm"
+            value={formatYMD(rangeEnd)}
+            onChange={(e) => {
+               if (e.target.value) {
+                 const newEnd = new Date(e.target.value + "T23:59:59")
+                 if (!isNaN(newEnd.getTime()) && newEnd >= rangeStart) {
+                   onRangeChange(rangeStart, newEnd)
+                 }
+               }
+            }}
+          />
         </div>
       </div>
       
       <Separator />
 
-      <div className="relative h-12 w-full flex items-center">
+      <div className="relative h-12 w-full flex items-center overflow-hidden">
         {/* Timeline Track line */}
         <div className="absolute w-full h-0.5 bg-muted"></div>
         
-        {visibleArchives.map((archive) => {
+        {archives.map((archive) => {
           const time = new Date(archive.created_at).getTime()
           let ratio = (time - rangeStartMs) / rangeDuration
-          ratio = Math.max(0, Math.min(1, ratio)) // Clamp between 0 and 1
+          
+          // Determine if it's within the visible range
+          const isVisible = time >= rangeStartMs && time <= rangeEndMs
+          
+          // Clamp for rendering position so they animate from/to the edges
+          ratio = Math.max(-0.05, Math.min(1.05, ratio)) 
           const leftPercent = ratio * 100
           const isSelected = archive.name === selectedArchive
 
@@ -124,28 +125,40 @@ export function ArchiveTimeline({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute w-6 h-6 -ml-3 rounded-full hover:bg-accent hover:scale-125 transition-transform"
+                  className={cn(
+                    "absolute w-6 h-6 -ml-3 rounded-full hover:bg-accent hover:scale-125",
+                    "transition-[left,transform,opacity,background-color] duration-300 ease-in-out motion-reduce:transition-none",
+                    !isVisible && "opacity-0 scale-50 pointer-events-none"
+                  )}
                   style={{ left: `${leftPercent}%` }}
                   onClick={(e) => {
                     if (e.shiftKey) {
-                      const archiveDate = new Date(archive.created_at)
-                      const start = new Date(archiveDate)
-                      start.setDate(archiveDate.getDate() - 1)
-                      start.setHours(0, 0, 0, 0)
+                      const archiveTime = new Date(archive.created_at).getTime()
+                      const currentRangeStart = rangeStart.getTime()
+                      const currentRangeEnd = rangeEnd.getTime()
+                      const currentWindow = currentRangeEnd - currentRangeStart
                       
-                      const end = new Date(archiveDate)
-                      end.setDate(archiveDate.getDate() + 1)
-                      end.setHours(23, 59, 59, 999)
+                      // Zoom in factor: new window will be 50% of the current window
+                      const factor = 0.5
+                      const newWindow = currentWindow * factor
                       
-                      onRangeChange(start, end)
+                      // Minimum window of ~1 hour
+                      const minWindow = 60 * 60 * 1000 
+                      const finalWindow = Math.max(newWindow, minWindow)
+                      
+                      // Center the new window on the archive
+                      const newStartMs = archiveTime - (finalWindow / 2)
+                      const newEndMs = archiveTime + (finalWindow / 2)
+                      
+                      onRangeChange(new Date(newStartMs), new Date(newEndMs))
                     } else {
                       onSelect(archive.name)
                     }
                   }}
                 >
                   <div className={cn(
-                    "w-3 h-3 rounded-full shadow-sm",
-                    isSelected ? "bg-primary" : "bg-muted-foreground"
+                    "w-3 h-3 rounded-full shadow-sm transition-colors",
+                    isSelected ? "bg-primary scale-110" : "bg-muted-foreground"
                   )} />
                 </Button>
               </TooltipTrigger>
