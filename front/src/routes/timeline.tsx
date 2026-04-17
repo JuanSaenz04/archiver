@@ -75,14 +75,14 @@ function TimelinePage() {
           </Button>
           <h1 className="text-xl font-bold tracking-tight">Timeline</h1>
         </div>
-        <form onSubmit={handleSearch} className="flex items-center gap-2">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Input
             placeholder="Search by URL (e.g. https://example.com)"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             className="flex-1"
           />
-          <Button type="submit">
+          <Button type="submit" className="w-full sm:w-auto">
             <Search className="size-4 mr-2" />
             Search
           </Button>

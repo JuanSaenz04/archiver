@@ -69,35 +69,39 @@ export function ArchiveTimeline({
           <Button variant="outline" size="sm" onClick={() => handlePreset(365)}>1y</Button>
           <Button variant="outline" size="sm" onClick={() => handlePreset('all')}>All</Button>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">From:</span>
-          <Input 
-            type="date" 
-            className="w-auto h-8 text-sm"
-            value={formatYMD(rangeStart)}
-            onChange={(e) => {
-               if (e.target.value) {
-                 const newStart = new Date(e.target.value + "T00:00:00") // avoid timezone issues
-                 if (!isNaN(newStart.getTime()) && newStart <= rangeEnd) {
-                   onRangeChange(newStart, rangeEnd)
-                 }
-               }
-            }}
-          />
-          <span className="text-sm font-medium">To:</span>
-          <Input 
-            type="date" 
-            className="w-auto h-8 text-sm"
-            value={formatYMD(rangeEnd)}
-            onChange={(e) => {
-               if (e.target.value) {
-                 const newEnd = new Date(e.target.value + "T23:59:59")
-                 if (!isNaN(newEnd.getTime()) && newEnd >= rangeStart) {
-                   onRangeChange(rangeStart, newEnd)
-                 }
-               }
-            }}
-          />
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-1 sm:flex-none">
+            <span className="text-xs sm:text-sm font-medium">From:</span>
+            <Input 
+              type="date" 
+              className="flex-1 sm:w-auto h-8 text-xs sm:text-sm"
+              value={formatYMD(rangeStart)}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const newStart = new Date(e.target.value + "T00:00:00") // avoid timezone issues
+                  if (!isNaN(newStart.getTime()) && newStart <= rangeEnd) {
+                    onRangeChange(newStart, rangeEnd)
+                  }
+                }
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-1 sm:flex-none">
+            <span className="text-xs sm:text-sm font-medium">To:</span>
+            <Input 
+              type="date" 
+              className="flex-1 sm:w-auto h-8 text-xs sm:text-sm"
+              value={formatYMD(rangeEnd)}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const newEnd = new Date(e.target.value + "T23:59:59")
+                  if (!isNaN(newEnd.getTime()) && newEnd >= rangeStart) {
+                    onRangeChange(rangeStart, newEnd)
+                  }
+                }
+              }}
+            />
+          </div>
         </div>
       </div>
       
@@ -122,7 +126,22 @@ export function ArchiveTimeline({
                   size="icon"
                   className="absolute w-6 h-6 -ml-3 rounded-full hover:bg-accent hover:scale-125 transition-transform"
                   style={{ left: `${leftPercent}%` }}
-                  onClick={() => onSelect(archive.name)}
+                  onClick={(e) => {
+                    if (e.shiftKey) {
+                      const archiveDate = new Date(archive.created_at)
+                      const start = new Date(archiveDate)
+                      start.setDate(archiveDate.getDate() - 1)
+                      start.setHours(0, 0, 0, 0)
+                      
+                      const end = new Date(archiveDate)
+                      end.setDate(archiveDate.getDate() + 1)
+                      end.setHours(23, 59, 59, 999)
+                      
+                      onRangeChange(start, end)
+                    } else {
+                      onSelect(archive.name)
+                    }
+                  }}
                 >
                   <div className={cn(
                     "w-3 h-3 rounded-full shadow-sm",
@@ -139,9 +158,14 @@ export function ArchiveTimeline({
         })}
       </div>
 
-      <div className="flex justify-between text-xs text-muted-foreground">
+      <div className="flex justify-between items-center text-xs text-muted-foreground">
         <span>{formatDisplayDate(rangeStart)}</span>
-        <span>{visibleArchives.length} archives visible</span>
+        <div className="flex flex-col items-center gap-1">
+          <span>{visibleArchives.length} archives visible</span>
+          <span className="hidden md:inline-block text-[10px] opacity-70 italic">
+            Shift + Click an archive to zoom in
+          </span>
+        </div>
         <span>{formatDisplayDate(rangeEnd)}</span>
       </div>
     </div>
