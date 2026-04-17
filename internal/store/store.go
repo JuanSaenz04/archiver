@@ -43,7 +43,7 @@ func Open(path string) (*ArchiveStore, error) {
 		separator = "&"
 	}
 	dsn := fmt.Sprintf("%s%s_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", path, separator)
-	
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

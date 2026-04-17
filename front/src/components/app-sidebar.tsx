@@ -19,10 +19,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { apiClient } from "@/lib/api"
-import type { Archive, GetArchivesResponse } from "@/models/archive"
+import type { Archive } from "@/models/archive"
 import { File, RefreshCw, Info, Search, Filter, X, Tag } from "lucide-react"
-import { useEffect, useState, useMemo, type Dispatch, type SetStateAction } from "react"
+import { useState, useMemo, type Dispatch, type SetStateAction } from "react"
 import { ArchiveDetailsDialog } from "./archive-details-dialog"
 import { cn } from "@/lib/utils"
 import {
@@ -34,12 +33,19 @@ import {
 interface Props {
   onArchiveSelected: Dispatch<SetStateAction<string>>
   selectedArchive: string
+  archives: Archive[]
+  loading: boolean
+  onRefresh: () => Promise<void>
 }
 
-export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
+export function AppSidebar({
+  onArchiveSelected,
+  selectedArchive,
+  archives,
+  loading,
+  onRefresh,
+}: Props) {
 
-  const [ archives, setArchives ] = useState<Archive[] | null >(null)
-  const [ loading, setLoading ] = useState(false)
   const [ searchQuery, setSearchQuery ] = useState("")
   const [ selectedTags, setSelectedTags ] = useState<string[]>([])
 
@@ -48,15 +54,12 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
   const [ isDialogOpen, setIsDialogOpen ] = useState(false)
 
   const allTags = useMemo(() => {
-    if (!archives) return []
     const tags = new Set<string>()
     archives.forEach(a => a.tags?.forEach(t => tags.add(t)))
     return Array.from(tags).sort()
   }, [archives])
 
   const filteredArchives = useMemo(() => {
-    if (!archives) return null
-
     return archives.filter(archive => {
       // Search text match (name, description, tags)
       const searchLower = searchQuery.toLowerCase()
@@ -73,47 +76,25 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
     })
   }, [archives, searchQuery, selectedTags])
 
-  const fetchArchives = async () => {
-    setLoading(true)
-    try {
-      const data = await apiClient.get('/archives') as GetArchivesResponse;
-      setArchives(data.archives);  
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleArchiveDeleted = (archiveId: string) => {
-    if (archives) {
-      const deleted = archives.find(a => a.id === archiveId)
-      if (deleted && selectedArchive === deleted.name) {
-        onArchiveSelected("")
-      }
-      setArchives(archives.filter(a => a.id !== archiveId))
+    const deleted = archives.find(a => a.id === archiveId)
+    if (deleted && selectedArchive === deleted.name) {
+      onArchiveSelected("")
     }
+    void onRefresh()
   }
 
   const handleArchiveUpdated = (updatedArchive: Archive) => {
-    if (archives) {
-      // Find the old archive by ID
-      setArchives(archives.map(a => 
-        a.id === updatedArchive.id ? updatedArchive : a
-      ))
-
-      // If the currently selected archive was the one updated (potentially renamed)
-      // We must check by old name before update, or just check by ID if we had ID
-      const oldArchive = archives.find(a => a.id === updatedArchive.id)
-      if (oldArchive && selectedArchive === oldArchive.name) {
-        onArchiveSelected(updatedArchive.name)
-      }
-
-      // Update the detailArchive to reflect changes in the dialog immediately
-      if (detailArchive?.id === updatedArchive.id) {
-        setDetailArchive(updatedArchive)
-      }
+    const oldArchive = archives.find(a => a.id === updatedArchive.id)
+    if (oldArchive && selectedArchive === oldArchive.name) {
+      onArchiveSelected(updatedArchive.name)
     }
+
+    if (detailArchive?.id === updatedArchive.id) {
+      setDetailArchive(updatedArchive)
+    }
+
+    void onRefresh()
   }
 
   const toggleTag = (tag: string) => {
@@ -127,10 +108,6 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
     setSelectedTags([])
   }
 
-  useEffect(() => {
-    fetchArchives();
-  }, [])
-
   return (
     <Sidebar className="absolute h-full border-r">
       <SidebarHeader>
@@ -142,7 +119,7 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
                         <X className="size-4" />
                     </Button>
                 )}
-                <Button variant="ghost" size="icon" className="size-8" onClick={fetchArchives} disabled={loading}>
+                <Button variant="ghost" size="icon" className="size-8" onClick={() => void onRefresh()} disabled={loading}>
                     <RefreshCw className={cn("size-4", loading && "animate-spin")} />
                 </Button>
             </div>
@@ -237,7 +214,7 @@ export function AppSidebar({ onArchiveSelected, selectedArchive }: Props) {
           <SidebarGroupLabel className="px-4">Archive List</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="px-2">
-              { filteredArchives ? (
+              {!loading ? (
                 filteredArchives.length > 0 ? (
                     filteredArchives.map((archive) => (
                     <SidebarMenuItem key={archive.id}>
