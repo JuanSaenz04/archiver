@@ -10,21 +10,32 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: 'stable'
-        
-    - name: Create dummy dist folder
-      run: |
-        mkdir -p internal/api/dist
-        touch internal/api/dist/placeholder.txt
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
 
-    - name: Install dependencies
-      run: go mod download
+      - name: Create dummy dist folder
+        run: |
+          mkdir -p internal/api/dist
+          touch internal/api/dist/placeholder.txt
 
-    - name: Run Tests
-      run: go test -v ./...
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            printf 'These files need gofmt:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test -v ./...
