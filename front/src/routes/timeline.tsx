@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState, useEffect, useMemo, useLayoutEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { apiClient } from '@/lib/api'
 import type { Archive, GetArchivesResponse } from '@/models/archive'
 import { Input } from '@/components/ui/input'
@@ -19,8 +19,7 @@ function TimelinePage() {
   const [archives, setArchives] = useState<Archive[]>([])
   const [selectedArchive, setSelectedArchive] = useState<string>('')
   
-  const [rangeStart, setRangeStart] = useState<Date>(new Date())
-  const [rangeEnd, setRangeEnd] = useState<Date>(new Date())
+  const [rangeOverride, setRangeOverride] = useState<{ start: Date; end: Date } | null>(null)
 
   // Fetch archives once on mount
   useEffect(() => {
@@ -41,24 +40,26 @@ function TimelinePage() {
     return archives.filter(a => a.source_url.includes(submittedUrl))
   }, [archives, submittedUrl])
 
-  // Sync range when filtered archives change
-  useLayoutEffect(() => {
+  // Derive the default range bounds from filtered archives
+  const defaultRange = useMemo(() => {
     if (filteredArchives.length > 0) {
-      setRangeStart(new Date(filteredArchives[0].created_at))
-      setRangeEnd(new Date(filteredArchives[filteredArchives.length - 1].created_at))
-    } else {
-      const today = new Date()
-      const lastWeek = new Date()
-      lastWeek.setDate(today.getDate() - 7)
-      setRangeStart(lastWeek)
-      setRangeEnd(today)
+      return {
+        start: new Date(filteredArchives[0].created_at),
+        end: new Date(filteredArchives[filteredArchives.length - 1].created_at)
+      }
     }
+    const today = new Date()
+    const lastWeek = new Date()
+    lastWeek.setDate(today.getDate() - 7)
+    return { start: lastWeek, end: today }
   }, [filteredArchives])
+
+  const effectiveRange = rangeOverride ?? defaultRange
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setSubmittedUrl(urlInput)
-    setSelectedArchive('') // reset selection on new search
+    setRangeOverride(null) // reset range to follow new dataset
   }
 
   return (
@@ -98,12 +99,11 @@ function TimelinePage() {
         <ArchiveTimeline 
           archives={filteredArchives}
           selectedArchive={selectedArchive}
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
+          rangeStart={effectiveRange.start}
+          rangeEnd={effectiveRange.end}
           onSelect={setSelectedArchive}
           onRangeChange={(start, end) => {
-            setRangeStart(start)
-            setRangeEnd(end)
+            setRangeOverride({ start, end })
           }}
         />
       </div>
