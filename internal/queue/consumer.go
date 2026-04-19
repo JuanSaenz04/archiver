@@ -14,7 +14,6 @@ import (
 const (
 	streamName    = "crawl_stream"
 	groupName     = "worker_group"
-	consumerName  = "worker-1" // TODO: Make this unique if running multiple workers
 	retryInterval = 5 * time.Second
 )
 
@@ -31,7 +30,7 @@ func ensureStreamAndGroup(ctx context.Context, rdb *redis.Client) error {
 
 // StartWorker starts the worker loop to consume jobs from Redis.
 // On any error it retries after retryInterval indefinitely.
-func StartWorker(ctx context.Context, rdb *redis.Client, process Processor) error {
+func StartWorker(ctx context.Context, rdb *redis.Client, consumerName string, process Processor) error {
 	if err := ensureStreamAndGroup(ctx, rdb); err != nil {
 		return fmt.Errorf("create consumer group on startup: %w", err)
 	}

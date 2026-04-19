@@ -15,6 +15,7 @@ import (
 	"github.com/JuanSaenz04/archiver/internal/crawler"
 	"github.com/JuanSaenz04/archiver/internal/queue"
 	"github.com/JuanSaenz04/archiver/internal/store"
+	"github.com/JuanSaenz04/archiver/internal/worker"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -91,7 +92,9 @@ func run() error {
 
 	slog.Info("starting worker", "timeout_seconds", timeoutSeconds, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
 
-	if err := queue.StartWorker(ctx, rdb, crawler.Run); err != nil {
+	consumerName := worker.GetWorkerName()
+
+	if err := queue.StartWorker(ctx, rdb, consumerName, crawler.Run); err != nil {
 		return fmt.Errorf("start worker: %w", err)
 	}
 
