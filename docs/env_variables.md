@@ -20,4 +20,5 @@ This document lists the environment variables used by the Archiver services (API
 | `ARCHIVES_DIR` | - | **Yes** | Absolute path to the directory where generated archives should be saved and where archive files are managed by the worker. |
 | `SQLITE_DIR` | `ARCHIVES_DIR` | No | Directory where the SQLite database file (`archive.db`) is stored. If omitted, it **defaults to `ARCHIVES_DIR`**. |
 | `CRAWLER_TIMEOUT`| `30` | No | Maximum duration (in seconds) allowed for the underlying `browsertrix-crawler` process to run before timing out. |
+| `CONSUMER_NAME` | `worker-<id>` | No | Unique identifier for this worker instance within the Redis consumer group. If unset, it defaults to `worker-$HOSTNAME` or a random UUID. |
 | `LOG_LEVEL` | `info` | No | Logging verbosity for structured logs. Supported values: `debug`, `info`, `warn`/`warning`, `error`. |
