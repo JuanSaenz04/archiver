@@ -1,6 +1,6 @@
 module github.com/JuanSaenz04/archiver
 
-go 1.26.1
+go 1.26.2
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
