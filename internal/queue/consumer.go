@@ -21,7 +21,7 @@ const (
 type Processor func(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error
 
 func ensureStreamAndGroup(ctx context.Context, rdb *redis.Client) error {
-	err := rdb.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err()
+	err := rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err()
 	if err != nil && !redis.HasErrorPrefix(err, "BUSYGROUP") {
 		return err
 	}
@@ -100,6 +100,9 @@ func StartWorker(ctx context.Context, rdb *redis.Client, consumerName string, pr
 				var msg CrawlMessage
 				if err := json.Unmarshal([]byte(payloadMsg), &msg); err != nil {
 					slog.Warn("failed to unmarshal crawl message", "job_id", jobID, "message_id", message.ID, "error", err)
+					if err := rdb.XAck(ctx, streamName, groupName, message.ID).Err(); err != nil {
+						slog.Error("failed to acknowledge malformed redis message", "job_id", jobID, "message_id", message.ID, "error", err)
+					}
 					continue
 				}
 
