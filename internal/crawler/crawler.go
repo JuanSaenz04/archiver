@@ -135,6 +135,6 @@ func setDefaultValuesIfEmpty(options *models.CrawlOptions) {
 	}
 
 	if options.Depth < 0 {
-		options.Depth = 0
+		options.Depth = -1
 	}
 }
