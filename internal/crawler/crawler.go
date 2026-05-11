@@ -51,7 +51,11 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		"--limit", strconv.Itoa(options.PageLimit),
 		"--sizeLimit", strconv.Itoa(options.SizeLimit*1024*1024),
 		"--depth", strconv.Itoa(options.Depth),
-		"--timeout", strconv.Itoa(crawler.timeoutInSeconds))
+		"--timeout", strconv.Itoa(crawler.timeoutInSeconds),
+		"--postLoadDelay", "10",
+		"--pageExtraDelay", "10",
+		"--behaviorTimeout", "120",
+	)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
