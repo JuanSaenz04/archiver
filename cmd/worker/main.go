@@ -60,7 +60,7 @@ func run() error {
 	timeoutSeconds, err := strconv.Atoi(timeoutEnv)
 
 	if err != nil {
-		timeoutSeconds = 30
+		timeoutSeconds = 90
 		slog.Debug("invalid CRAWLER_TIMEOUT, using default", "value", timeoutEnv, "default", timeoutSeconds)
 	}
 
