@@ -5,72 +5,83 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { List, RefreshCw } from "lucide-react"
-import { useState } from "react"
-import { apiClient } from "@/lib/api"
-import type { Job } from "@/models/job"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { List, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { apiClient } from "@/lib/api";
+import type { Job } from "@/models/job";
+import { cn } from "@/lib/utils";
 
-type JobsResponse = Job[] | { jobs?: Job[] }
+type JobsResponse = Job[] | { jobs?: Job[] };
 
 function JobCard({ job }: { job: Job }) {
   return (
     <div className="mr-2 ml-2 p-3 border rounded-md text-sm">
-      <div className="font-medium truncate" title={job.url}>{job.url}</div>
+      <div className="font-medium truncate" title={job.url}>
+        {job.url}
+      </div>
       <div className="flex items-center justify-between mt-2">
-        <span className="text-xs text-muted-foreground font-mono">{job.id.slice(0, 8)}</span>
-        <span className={cn(
-          "text-[10px] uppercase font-bold px-2 py-0.5 rounded-full",
-          job.status === 'completed' && "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-          job.status === 'failed' && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-          job.status === 'pending' && "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-          !['completed', 'failed', 'pending'].includes(job.status) && "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-        )}>
+        <span className="text-xs text-muted-foreground font-mono">
+          {job.id.slice(0, 8)}
+        </span>
+        <span
+          className={cn(
+            "text-[10px] uppercase font-bold px-2 py-0.5 rounded-full",
+            job.status === "completed" &&
+              "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+            job.status === "failed" &&
+              "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+            job.status === "pending" &&
+              "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+            !["completed", "failed", "pending"].includes(job.status) &&
+              "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+          )}
+        >
           {job.status}
         </span>
       </div>
     </div>
-  )
+  );
 }
 
 export function JobsSheet() {
-  const [jobs, setJobs] = useState<Job[]>([])
-  const [isOpen, setIsOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const fetchJobs = async () => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const data = await apiClient.get<JobsResponse>('/jobs')
-      
-      const jobsList = Array.isArray(data) ? data : (data.jobs ?? [])
+      const data = await apiClient.get<JobsResponse>("/jobs");
+
+      const jobsList = Array.isArray(data) ? data : (data.jobs ?? []);
 
       // Sort jobs by created_at descending (newest first)
-      const sortedJobs = [...jobsList].sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )
+      const sortedJobs = [...jobsList].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
 
-      setJobs(sortedJobs)
+      setJobs(sortedJobs);
     } catch (error) {
-      console.error("Failed to fetch jobs:", error)
+      console.error("Failed to fetch jobs:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleOpenChange = (open: boolean) => {
-    setIsOpen(open)
+    setIsOpen(open);
     if (open) {
-      void fetchJobs()
+      void fetchJobs();
     }
-  }
+  };
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
-        <Button size="icon" variant="outline">
+        <Button size="icon" variant="outline" aria-label="View jobs">
           <List />
         </Button>
       </SheetTrigger>
@@ -78,24 +89,31 @@ export function JobsSheet() {
         <SheetHeader>
           <div className="flex items-center gap-2">
             <SheetTitle>Jobs</SheetTitle>
-            <Button variant="ghost" size="icon-sm" onClick={fetchJobs} disabled={isLoading} className="size-8">
-                <RefreshCw className={cn("size-4", isLoading ? "animate-spin" : "")} />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={fetchJobs}
+              disabled={isLoading}
+              className="size-8"
+              aria-label="Refresh jobs"
+            >
+              <RefreshCw
+                className={cn("size-4", isLoading ? "animate-spin" : "")}
+              />
             </Button>
           </div>
-          <SheetDescription>
-            Current status of crawling jobs.
-          </SheetDescription>
+          <SheetDescription>Current status of crawling jobs.</SheetDescription>
         </SheetHeader>
         <div className="mt-4 flex flex-col gap-2 h-full overflow-y-auto pb-8">
-            {jobs.length === 0 ? (
-                <div className="text-center text-sm text-muted-foreground mt-8">No jobs found.</div>
-            ) : (
-                jobs.map((job) => (
-                    <JobCard key={job.id} job={job} />
-                ))
-            )}
+          {jobs.length === 0 ? (
+            <div className="text-center text-sm text-muted-foreground mt-8">
+              No jobs found.
+            </div>
+          ) : (
+            jobs.map((job) => <JobCard key={job.id} job={job} />)
+          )}
         </div>
       </SheetContent>
     </Sheet>
-  )
+  );
 }

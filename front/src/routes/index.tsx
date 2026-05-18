@@ -1,36 +1,40 @@
-import { AppSidebar } from '@/components/app-sidebar'
-import { ArchiveViewer } from '@/components/archive-viewer'
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
-import { apiClient } from '@/lib/api'
-import type { Archive, GetArchivesResponse } from '@/models/archive'
-import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useState } from 'react'
+import { AppSidebar } from "@/components/app-sidebar";
+import { ArchiveViewer } from "@/components/archive-viewer";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { apiClient } from "@/lib/api";
+import type { Archive, GetArchivesResponse } from "@/models/archive";
+import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useState } from "react";
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute("/")({
   loader: async () => {
-    const data = await apiClient.get<GetArchivesResponse>('/archives')
-    return data.archives
+    const data = await apiClient.get<GetArchivesResponse>("/archives");
+    return data.archives;
   },
   component: Index,
-})
+});
 
 function Index() {
-  const initialArchives = Route.useLoaderData()
-  const [ selectedArchive, setSelectedArchive ] = useState("")
-  const [archives, setArchives] = useState<Archive[]>(initialArchives)
-  const [loading, setLoading] = useState(false)
+  const initialArchives = Route.useLoaderData();
+  const [selectedArchive, setSelectedArchive] = useState("");
+  const [archives, setArchives] = useState<Archive[]>(initialArchives);
+  const [loading, setLoading] = useState(false);
 
   const refreshArchives = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const data = await apiClient.get<GetArchivesResponse>('/archives')
-      setArchives(data.archives)
+      const data = await apiClient.get<GetArchivesResponse>("/archives");
+      setArchives(data.archives);
     } catch (error) {
-      console.error(error)
+      console.error(error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   return (
     <SidebarProvider className="h-full min-h-0 relative">
@@ -50,5 +54,5 @@ function Index() {
         </div>
       </SidebarInset>
     </SidebarProvider>
-  )
+  );
 }

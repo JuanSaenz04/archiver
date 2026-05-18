@@ -1,30 +1,30 @@
-import type { Archive } from "@/models/archive"
+import type { Archive } from "@/models/archive";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
-import { 
-  Calendar, 
-  ExternalLink, 
-  FileText, 
-  Tag, 
-  Trash2, 
-  Pencil, 
-  Check, 
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Calendar,
+  ExternalLink,
+  FileText,
+  Tag,
+  Trash2,
+  Pencil,
+  Check,
   X,
-  AlertCircle
-} from "lucide-react"
-import { useState } from "react"
-import { apiClient } from "@/lib/api"
-import { toast } from "sonner"
+  AlertCircle,
+} from "lucide-react";
+import { useState } from "react";
+import { apiClient } from "@/lib/api";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,131 +34,140 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
 
 interface Props {
-  archive: Archive | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onDeleted: (archiveId: string) => void
-  onUpdated: (updatedArchive: Archive) => void
+  archive: Archive | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDeleted: (archiveId: string) => void;
+  onUpdated: (updatedArchive: Archive) => void;
 }
 
-export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, onUpdated }: Props) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editName, setEditName] = useState("")
-  const [editDescription, setEditDescription] = useState("")
-  const [editTags, setEditTags] = useState("")
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+export function ArchiveDetailsDialog({
+  archive,
+  open,
+  onOpenChange,
+  onDeleted,
+  onUpdated,
+}: Props) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  if (!archive) return null
+  if (!archive) return null;
 
   const resetEditorForArchive = () => {
-    setEditName(archive.name.replace(".wacz", ""))
-    setEditDescription(archive.description || "")
-    setEditTags(archive.tags?.join(", ") || "")
-  }
+    setEditName(archive.name.replace(".wacz", ""));
+    setEditDescription(archive.description || "");
+    setEditTags(archive.tags?.join(", ") || "");
+  };
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
-      setIsEditing(false)
-      setIsDeleting(false)
-      setError(null)
-      setSuccess(null)
+      setIsEditing(false);
+      setIsDeleting(false);
+      setError(null);
+      setSuccess(null);
     }
 
-    onOpenChange(nextOpen)
-  }
+    onOpenChange(nextOpen);
+  };
 
   const handleStartEditing = () => {
-    resetEditorForArchive()
-    setError(null)
-    setSuccess(null)
-    setIsEditing(true)
-  }
+    resetEditorForArchive();
+    setError(null);
+    setSuccess(null);
+    setIsEditing(true);
+  };
 
   const handleCancelEditing = () => {
-    resetEditorForArchive()
-    setError(null)
-    setIsEditing(false)
-  }
+    resetEditorForArchive();
+    setError(null);
+    setIsEditing(false);
+  };
 
   const handleUpdate = async () => {
     if (!editName.trim()) {
-      setError("Name cannot be empty")
-      return
+      setError("Name cannot be empty");
+      return;
     }
 
     // Parse tags: split on comma, trim, drop empty
     const parsedTags = editTags
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag.length > 0)
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
 
-    setIsLoading(true)
-    setError(null)
-    setSuccess(null)
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
     try {
       const payload = {
         name: editName,
         description: editDescription,
-        tags: parsedTags
-      }
+        tags: parsedTags,
+      };
 
-      await apiClient.put(`/archives/${archive.name}`, payload)
-      const newName = editName + ".wacz"
-      
+      await apiClient.put(`/archives/${archive.name}`, payload);
+      const newName = editName + ".wacz";
+
       const updatedArchive: Archive = {
         ...archive,
         name: newName,
         description: editDescription,
-        tags: parsedTags
-      }
+        tags: parsedTags,
+      };
 
       // Notify parent about the update
-      onUpdated(updatedArchive)
-      
-      setIsEditing(false)
-      setSuccess("Archive updated successfully")
-      toast.success(`Archive "${editName}" updated`)
+      onUpdated(updatedArchive);
+
+      setIsEditing(false);
+      setSuccess("Archive updated successfully");
+      toast.success(`Archive "${editName}" updated`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to update archive")
+      setError(err instanceof Error ? err.message : "Failed to update archive");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleDelete = async () => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
     try {
-      await apiClient.delete(`/archives/${archive.name}`)
-      toast.success(`Archive "${archive.name.replace(".wacz", "")}" deleted`)
-      onDeleted(archive.id)
-      onOpenChange(false)
-      setIsDeleting(false)
+      await apiClient.delete(`/archives/${archive.name}`);
+      toast.success(`Archive "${archive.name.replace(".wacz", "")}" deleted`);
+      onDeleted(archive.id);
+      onOpenChange(false);
+      setIsDeleting(false);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to delete archive")
-      setIsDeleting(false)
+      setError(err instanceof Error ? err.message : "Failed to delete archive");
+      setIsDeleting(false);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  const formattedDate = new Date(archive.created_at).toLocaleString()
+  const formattedDate = new Date(archive.created_at).toLocaleString();
 
   const formatBytes = (bytes: number) => {
-    if (!bytes || bytes === 0) return <span className="text-muted-foreground italic">Size not available</span>
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    if (!bytes || bytes === 0)
+      return (
+        <span className="text-muted-foreground italic">Size not available</span>
+      );
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
     // Don't go higher than GB
-    const sizeIndex = Math.min(i, sizes.length - 1)
-    return `${parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2))} ${sizes[sizeIndex]}`
-  }
+    const sizeIndex = Math.min(i, sizes.length - 1);
+    return `${parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2))} ${sizes[sizeIndex]}`;
+  };
 
   return (
     <>
@@ -176,14 +185,16 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
             <div className="space-y-2">
               <Label className="text-muted-foreground">Name</Label>
               {isEditing ? (
-                <Input 
+                <Input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   className="h-9"
                   autoFocus
                 />
               ) : (
-                <div className="text-lg font-semibold truncate">{archive.name.replace(".wacz", "")}</div>
+                <div className="text-lg font-semibold truncate">
+                  {archive.name.replace(".wacz", "")}
+                </div>
               )}
             </div>
 
@@ -201,7 +212,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
             <div className="space-y-1">
               <Label className="text-muted-foreground">Description</Label>
               {isEditing ? (
-                <Textarea 
+                <Textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   placeholder="Enter archive description..."
@@ -209,7 +220,11 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                 />
               ) : (
                 <div className="text-sm min-h-[60px] p-2 rounded-md border bg-muted/30 whitespace-pre-wrap">
-                  {archive.description || <span className="text-muted-foreground italic">No description provided</span>}
+                  {archive.description || (
+                    <span className="text-muted-foreground italic">
+                      No description provided
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -223,16 +238,18 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                   </Label>
                   <div className="text-sm truncate">
                     {archive.source_url ? (
-                      <a 
-                        href={archive.source_url} 
-                        target="_blank" 
+                      <a
+                        href={archive.source_url}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
                       >
                         {archive.source_url}
                       </a>
                     ) : (
-                      <span className="text-muted-foreground italic">No URL</span>
+                      <span className="text-muted-foreground italic">
+                        No URL
+                      </span>
                     )}
                   </div>
                 </div>
@@ -240,9 +257,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                   <Label className="text-muted-foreground flex items-center gap-1">
                     <Calendar className="size-3" /> Created
                   </Label>
-                  <div className="text-sm">
-                    {formattedDate}
-                  </div>
+                  <div className="text-sm">{formattedDate}</div>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-muted-foreground flex items-center gap-1">
@@ -261,7 +276,7 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                 <Tag className="size-3" /> Tags
               </Label>
               {isEditing ? (
-                <Input 
+                <Input
                   value={editTags}
                   onChange={(e) => setEditTags(e.target.value)}
                   placeholder="tag1, tag2, tag3"
@@ -269,11 +284,15 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
               ) : (
                 <div className="flex flex-wrap gap-1">
                   {archive.tags && archive.tags.length > 0 ? (
-                    archive.tags.map(tag => (
-                      <Badge key={tag} variant="secondary">{tag}</Badge>
+                    archive.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary">
+                        {tag}
+                      </Badge>
                     ))
                   ) : (
-                    <span className="text-sm text-muted-foreground italic">No tags</span>
+                    <span className="text-sm text-muted-foreground italic">
+                      No tags
+                    </span>
                   )}
                 </div>
               )}
@@ -297,17 +316,17 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
           <DialogFooter className="flex-row sm:justify-end gap-2">
             {isEditing ? (
               <div className="flex items-center gap-2 w-full">
-                <Button 
-                  className="flex-1" 
-                  onClick={handleUpdate} 
+                <Button
+                  className="flex-1"
+                  onClick={handleUpdate}
                   disabled={isLoading}
                 >
                   <Check className="mr-2 size-4" />
                   Save Changes
                 </Button>
-                <Button 
-                  variant="outline" 
-                  className="flex-1" 
+                <Button
+                  variant="outline"
+                  className="flex-1"
                   onClick={handleCancelEditing}
                   disabled={isLoading}
                 >
@@ -317,8 +336,8 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   className="h-9"
                   onClick={handleStartEditing}
@@ -326,8 +345,8 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
                   <Pencil className="mr-2 size-4" />
                   Edit Metadata
                 </Button>
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   size="sm"
                   className="h-9"
                   onClick={() => setIsDeleting(true)}
@@ -347,17 +366,21 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the archive
-              <span className="font-semibold text-foreground"> {archive.name} </span>
+              This action cannot be undone. This will permanently delete the
+              archive
+              <span className="font-semibold text-foreground">
+                {" "}
+                {archive.name}{" "}
+              </span>
               and remove all associated metadata.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={(e) => {
-                e.preventDefault()
-                handleDelete()
+                e.preventDefault();
+                handleDelete();
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={isLoading}
@@ -368,5 +391,5 @@ export function ArchiveDetailsDialog({ archive, open, onOpenChange, onDeleted, o
         </AlertDialogContent>
       </AlertDialog>
     </>
-  )
+  );
 }
