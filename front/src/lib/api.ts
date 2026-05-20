@@ -1,12 +1,12 @@
-const API_URL = "/api"
+const API_URL = "/api";
 
 export const apiClient = {
   get: async <T>(endpoint: string): Promise<T> => {
-    const response = await fetch(`${API_URL}${endpoint}`)
+    const response = await fetch(`${API_URL}${endpoint}`);
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`)
+      throw new Error(`API Error: ${response.statusText}`);
     }
-    return (await response.json()) as T
+    return (await response.json()) as T;
   },
   post: async <TResponse, TBody = unknown>(
     endpoint: string,
@@ -18,23 +18,25 @@ export const apiClient = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-    })
+    });
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`)
+      throw new Error(`API Error: ${response.statusText}`);
     }
-    return (await response.json()) as TResponse
+    return (await response.json()) as TResponse;
   },
-  delete: async <TResponse = void>(endpoint: string): Promise<TResponse | void> => {
+  delete: async <TResponse = void>(
+    endpoint: string,
+  ): Promise<TResponse | void> => {
     const response = await fetch(`${API_URL}${endpoint}`, {
       method: "DELETE",
-    })
+    });
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`)
+      throw new Error(`API Error: ${response.statusText}`);
     }
     if (response.status === 204) {
-      return
+      return;
     }
-    return (await response.json()) as TResponse
+    return (await response.json()) as TResponse;
   },
   put: async <TResponse, TBody = unknown>(
     endpoint: string,
@@ -46,13 +48,13 @@ export const apiClient = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-    })
+    });
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`)
+      throw new Error(`API Error: ${response.statusText}`);
     }
     if (response.status === 204) {
-      return
+      return;
     }
-    return (await response.json()) as TResponse
+    return (await response.json()) as TResponse;
   },
-}
+};

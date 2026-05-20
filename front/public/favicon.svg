@@ -2,7 +2,7 @@
   <!-- Archive Box Container -->
   <path d="M8 20 L56 20 L52 56 H12 Z" fill="#e0e7ff" stroke="#4338ca" />
   <path d="M4 12 H60 V20 H4 Z" fill="#4f46e5" stroke="#4338ca" />
-  
+
   <!-- Web/Globe Symbol on the box -->
   <circle cx="32" cy="38" r="10" stroke="#4338ca" fill="white" />
   <path d="M32 28 V48" stroke="#4338ca" />
