@@ -110,16 +110,11 @@ jobs:
           ignore-unfixed: true
           exit-code: "0"
 
-      - name: Run Trivy vulnerability scan (SARIF)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ steps.image.outputs.scan_ref }}
-          format: sarif
-          output: trivy-${{ matrix.image.name }}.sarif
-          vuln-type: os,library
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "0"
+      - name: Convert Trivy report formats
+        shell: bash
+        run: |
+          trivy convert --format sarif --output trivy-${{ matrix.image.name }}.sarif trivy-${{ matrix.image.name }}.json
+          trivy convert --format table --output trivy-${{ matrix.image.name }}.txt trivy-${{ matrix.image.name }}.json
 
       - name: Upload Trivy report artifact
         uses: actions/upload-artifact@v6
@@ -128,11 +123,12 @@ jobs:
           path: |
             trivy-${{ matrix.image.name }}.json
             trivy-${{ matrix.image.name }}.sarif
+            trivy-${{ matrix.image.name }}.txt
           if-no-files-found: error
 
       - name: Upload Trivy SARIF to GitHub code scanning
         if: github.event_name != 'pull_request'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-${{ matrix.image.name }}.sarif
           category: trivy-${{ matrix.image.name }}
