@@ -100,7 +100,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
 
       - name: Run Trivy vulnerability scan (JSON)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.image.outputs.scan_ref }}
           format: json
@@ -111,7 +111,7 @@ jobs:
           exit-code: "0"
 
       - name: Run Trivy vulnerability scan (SARIF)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.image.outputs.scan_ref }}
           format: sarif
