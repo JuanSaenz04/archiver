@@ -10,7 +10,10 @@ Archiver is a minimalist web archiving solution that crawls websites and generat
 
 ## Getting Started
 
-Follow these steps to set up and run the Archiver using Docker.
+Follow these steps to set up and run Archiver using the pre-built Docker images published to GHCR:
+
+* `ghcr.io/juansaenz04/archiver-api`
+* `ghcr.io/juansaenz04/archiver-worker`
 
 ### 1. Configuration
 
@@ -35,13 +38,14 @@ Open the `.env` file and configure the necessary variables. For a full list of a
 
 ### 3. Run the Application
 
-Build and start the services using Docker Compose:
+Pull the pre-built images and start the services using Docker Compose:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-Once the containers are running, the user interface will be accessible at:
+Docker Compose will use the `latest` GHCR images by default. Once the containers are running, the user interface will be accessible at:
 
 `http://localhost:1080` (or your configured `APP_PORT`)
 
