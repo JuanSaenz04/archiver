@@ -127,7 +127,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Trivy SARIF to GitHub code scanning
-        if: github.event_name != 'pull_request'
+        if: matrix.image.name == 'api'
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-${{ matrix.image.name }}.sarif
