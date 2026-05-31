@@ -14,11 +14,16 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
+const (
+	errArchiveNotFound     = "Archive not found"
+	errInternalServerError = "Internal server error"
+)
+
 func (handler *Handler) HandleGetArchives(c *echo.Context) error {
 	archives, err := handler.archiveStore.List(c.Request().Context())
 	if err != nil {
 		slog.Error("failed to list archives", "error", err)
-		return respondWithError(http.StatusInternalServerError, "Internal Server Error", c)
+		return respondWithError(http.StatusInternalServerError, errInternalServerError, c)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -29,12 +34,12 @@ func (handler *Handler) HandleGetArchives(c *echo.Context) error {
 func (handler *Handler) HandleGetArchive(c *echo.Context) error {
 	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
 	if !ok {
-		return respondWithError(http.StatusNotFound, "Archive not found", c)
+		return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 	}
 
 	err := c.FileFS(archiveName, echo.NewDefaultFS(handler.archivesDir))
 	if err != nil {
-		return respondWithError(http.StatusNotFound, "Archive not found", c)
+		return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 	}
 
 	return nil
@@ -43,7 +48,7 @@ func (handler *Handler) HandleGetArchive(c *echo.Context) error {
 func (handler *Handler) HandleDeleteArchive(c *echo.Context) error {
 	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
 	if !ok {
-		return respondWithError(http.StatusNotFound, "Archive not found", c)
+		return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 	}
 
 	path := filepath.Join(handler.archivesDir, archiveName)
@@ -51,18 +56,18 @@ func (handler *Handler) HandleDeleteArchive(c *echo.Context) error {
 	tmpDir, err := os.MkdirTemp(handler.archivesDir, "archiver")
 	if err != nil {
 		slog.Error("failed to create temporary directory for delete", "archive_name", archiveName, "error", err)
-		return respondWithError(http.StatusInternalServerError, "Internal Server Error", c)
+		return respondWithError(http.StatusInternalServerError, errInternalServerError, c)
 	}
 
 	tempArchiveName := filepath.Join(tmpDir, archiveName)
 
 	if err := os.Rename(path, tempArchiveName); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return respondWithError(http.StatusNotFound, "Archive not found", c)
+			return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 		}
 
 		slog.Error("failed to move archive to temporary location", "archive_name", archiveName, "path", path, "temp_path", tempArchiveName, "error", err)
-		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+		return respondWithError(http.StatusInternalServerError, errInternalServerError, c)
 	}
 
 	err = handler.archiveStore.Delete(c.Request().Context(), archiveName)
@@ -72,11 +77,11 @@ func (handler *Handler) HandleDeleteArchive(c *echo.Context) error {
 		}
 
 		if errors.Is(err, store.ErrArchiveNotFound) {
-			return respondWithError(http.StatusNotFound, "Archive not found", c)
+			return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 		}
 
 		slog.Error("failed to delete archive metadata", "archive_name", archiveName, "error", err)
-		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+		return respondWithError(http.StatusInternalServerError, errInternalServerError, c)
 	}
 
 	if err := os.RemoveAll(tmpDir); err != nil {
@@ -102,7 +107,7 @@ func (handler *Handler) HandleModifyArchiveMetadata(c *echo.Context) error {
 
 	archiveName, ok := archiveutil.NormalizeArchiveName(c.Param("archiveName"))
 	if !ok {
-		return respondWithError(http.StatusNotFound, "Archive not found", c)
+		return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 	}
 
 	path := filepath.Join(handler.archivesDir, archiveName)
@@ -116,11 +121,11 @@ func (handler *Handler) HandleModifyArchiveMetadata(c *echo.Context) error {
 
 		if err := os.Rename(path, newPath); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				return respondWithError(http.StatusNotFound, "Archive not found", c)
+				return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 			}
 
 			slog.Error("failed to rename archive file", "old_name", archiveName, "new_name", newName, "path", path, "new_path", newPath, "error", err)
-			return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+			return respondWithError(http.StatusInternalServerError, errInternalServerError, c)
 		}
 	}
 
@@ -135,11 +140,11 @@ func (handler *Handler) HandleModifyArchiveMetadata(c *echo.Context) error {
 		}
 
 		if errors.Is(err, store.ErrArchiveNotFound) {
-			return respondWithError(http.StatusNotFound, "Archive not found", c)
+			return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 		}
 
 		slog.Error("failed to rename archive metadata", "old_name", archiveName, "new_name", newName, "error", err)
-		return respondWithError(http.StatusInternalServerError, "Internal server error", c)
+		return respondWithError(http.StatusInternalServerError, errInternalServerError, c)
 	}
 
 	slog.Info("archive renamed", "old_name", archiveName, "new_name", newName)
