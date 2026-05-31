@@ -9,9 +9,7 @@ services:
       - "--requirepass ${REDIS_PASS}"
   worker:
     container_name: "archiver-worker"
-    image: "archiver-worker:latest"
-    build:
-      dockerfile: "./Worker.Dockerfile"
+    image: "ghcr.io/juansaenz04/archiver-worker:latest"
     environment:
       REDIS_URL: "redis://:${REDIS_PASS}@broker:6379/0"
       ARCHIVES_DIR: "/archives"
@@ -21,9 +19,7 @@ services:
     restart: unless-stopped
   api:
     container_name: "archiver-api"
-    image: "archiver-api:latest"
-    build:
-      dockerfile: "./Api.Dockerfile"
+    image: "ghcr.io/juansaenz04/archiver-api:latest"
     environment:
       ARCHIVES_DIR: "/archives"
       REDIS_URL: "redis://:${REDIS_PASS}@broker:6379/0"
