@@ -55,7 +55,7 @@ export function AppSidebar({
   const allTags = useMemo(() => {
     const tags = new Set<string>();
     archives.forEach((a) => a.tags?.forEach((t) => tags.add(t)));
-    return Array.from(tags).sort();
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
   }, [archives]);
 
   const filteredArchives = useMemo(() => {
