@@ -1,14 +1,14 @@
 interface Props {
-  archiveName: string;
+  archiveId: string;
 }
 
-export function ArchiveViewer({ archiveName }: Props) {
-  const source = `/api/archives/${archiveName}`;
+export function ArchiveViewer({ archiveId }: Props) {
+  const source = `/api/archives/${archiveId}`;
   const viewerUrl = `/viewer.html?source=${encodeURIComponent(source)}`;
 
   return (
     <div className="h-full w-full bg-muted/50 rounded-xl overflow-hidden border shadow-sm">
-      {archiveName ? (
+      {archiveId ? (
         <iframe
           key={viewerUrl}
           src={viewerUrl}

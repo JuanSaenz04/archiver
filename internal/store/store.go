@@ -8,7 +8,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const latestSchemaVersion = 2
+const latestSchemaVersion = 3
 
 const migrationV1 = `
 CREATE TABLE IF NOT EXISTS archives (
@@ -31,6 +31,11 @@ CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
 
 const migrationV2 = `
 ALTER TABLE archives ADD COLUMN size_bytes INTEGER NOT NULL DEFAULT 0;
+`
+
+const migrationV3 = `
+ALTER TABLE archives ADD COLUMN filename TEXT;
+UPDATE archives SET filename = name;
 `
 
 type ArchiveStore struct {
@@ -72,6 +77,12 @@ func (s *ArchiveStore) RunMigrations() error {
 
 	if version < 2 {
 		if err := s.migrateV2(); err != nil {
+			return err
+		}
+	}
+
+	if version < 3 {
+		if err := s.migrateV3(); err != nil {
 			return err
 		}
 	}
@@ -128,6 +139,29 @@ func (s *ArchiveStore) migrateV2() error {
 	}
 
 	if _, err := tx.Exec("PRAGMA user_version = 2;"); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (s *ArchiveStore) migrateV3() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err := tx.Exec(migrationV3); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec("PRAGMA user_version = 3;"); err != nil {
 		return err
 	}
 

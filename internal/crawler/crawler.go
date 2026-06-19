@@ -77,12 +77,12 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	}
 
 	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
-	name, ok := archiveutil.NormalizeArchiveName(archive.Name)
+	filename, ok := archiveutil.NormalizeArchiveName(archive.Name)
 	if !ok {
-		name = jobID + ".wacz"
+		filename = jobID + ".wacz"
 	}
-	archive.Name = name
-	dstPath := filepath.Join(archivesDir, name)
+	archive.Filename = filename
+	dstPath := filepath.Join(archivesDir, filename)
 
 	src, err := os.Open(srcPath)
 	if err != nil {

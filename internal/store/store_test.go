@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -46,7 +47,8 @@ func TestInsertAndList(t *testing.T) {
 
 	first := models.Archive{
 		ID:          firstID,
-		Name:        "first.wacz",
+		Name:        "First Archive",
+		Filename:    "first.wacz",
 		Description: "first archive",
 		SourceURL:   "https://example.com/first",
 		Tags:        []string{"news", "2026"},
@@ -56,7 +58,8 @@ func TestInsertAndList(t *testing.T) {
 
 	second := models.Archive{
 		ID:          secondID,
-		Name:        "second.wacz",
+		Name:        "Second Archive",
+		Filename:    "second.wacz",
 		Description: "second archive",
 		SourceURL:   "https://example.com/second",
 		Tags:        []string{"tech"},
@@ -98,6 +101,10 @@ func TestInsertAndList(t *testing.T) {
 		t.Fatalf("first archive size mismatch: got %d, want %d", got.SizeBytes, first.SizeBytes)
 	}
 
+	if got := byName[first.Name]; got.Filename != first.Filename {
+		t.Fatalf("first archive filename mismatch: got %q, want %q", got.Filename, first.Filename)
+	}
+
 	if got := byName[second.Name]; got.ID != second.ID {
 		t.Fatalf("second archive id mismatch: got %s, want %s", got.ID, second.ID)
 	}
@@ -109,6 +116,10 @@ func TestInsertAndList(t *testing.T) {
 	if got := byName[second.Name]; got.SizeBytes != second.SizeBytes {
 		t.Fatalf("second archive size mismatch: got %d, want %d", got.SizeBytes, second.SizeBytes)
 	}
+
+	if got := byName[second.Name]; got.Filename != second.Filename {
+		t.Fatalf("second archive filename mismatch: got %q, want %q", got.Filename, second.Filename)
+	}
 }
 
 func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
@@ -118,7 +129,8 @@ func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
 
 	if err := s.Insert(ctx, models.Archive{
 		ID:          uuid.New(),
-		Name:        "dup.wacz",
+		Name:        "Duplicate Title",
+		Filename:    "dup-one.wacz",
 		Description: "first",
 		SourceURL:   "https://example.com/one",
 		Tags:        []string{"a"},
@@ -130,7 +142,8 @@ func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
 
 	err := s.Insert(ctx, models.Archive{
 		ID:          uuid.New(),
-		Name:        "dup.wacz",
+		Name:        "Duplicate Title",
+		Filename:    "dup-two.wacz",
 		Description: "second",
 		SourceURL:   "https://example.com/two",
 		Tags:        []string{"b"},
@@ -151,7 +164,8 @@ func TestInsertUsesSQLiteDefaultCreatedAtWhenZero(t *testing.T) {
 
 	if err := s.Insert(ctx, models.Archive{
 		ID:          uuid.New(),
-		Name:        "default-created-at.wacz",
+		Name:        "Default Created At",
+		Filename:    "default-created-at.wacz",
 		Description: "created with sqlite default",
 		SourceURL:   "https://example.com/default",
 		Tags:        []string{"default"},
@@ -163,7 +177,7 @@ func TestInsertUsesSQLiteDefaultCreatedAtWhenZero(t *testing.T) {
 	after := time.Now().UTC().Add(time.Second)
 
 	var createdAt time.Time
-	if err := s.db.QueryRowContext(ctx, "SELECT created_at FROM archives WHERE name = ?;", "default-created-at.wacz").Scan(&createdAt); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT created_at FROM archives WHERE name = ?;", "Default Created At").Scan(&createdAt); err != nil {
 		t.Fatalf("read created_at: %v", err)
 	}
 
@@ -176,7 +190,7 @@ func TestInsertUsesSQLiteDefaultCreatedAtWhenZero(t *testing.T) {
 	}
 
 	var sizeBytes int64
-	if err := s.db.QueryRowContext(ctx, "SELECT size_bytes FROM archives WHERE name = ?;", "default-created-at.wacz").Scan(&sizeBytes); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT size_bytes FROM archives WHERE name = ?;", "Default Created At").Scan(&sizeBytes); err != nil {
 		t.Fatalf("read size_bytes: %v", err)
 	}
 
@@ -225,8 +239,8 @@ func TestSyncFromDiskInsertsMissingWACZFiles(t *testing.T) {
 
 	var createdAt time.Time
 	var sizeBytes int64
-	if err := s.db.QueryRowContext(ctx, "SELECT created_at, size_bytes FROM archives WHERE name = ?;", "a.wacz").Scan(&createdAt, &sizeBytes); err != nil {
-		t.Fatalf("read created_at for a.wacz: %v", err)
+	if err := s.db.QueryRowContext(ctx, "SELECT created_at, size_bytes FROM archives WHERE name = ?;", "a").Scan(&createdAt, &sizeBytes); err != nil {
+		t.Fatalf("read created_at for a: %v", err)
 	}
 
 	if !createdAt.Equal(mtime) {
@@ -237,8 +251,8 @@ func TestSyncFromDiskInsertsMissingWACZFiles(t *testing.T) {
 		t.Fatalf("size_bytes mismatch for a.wacz: got %d, want %d", sizeBytes, len("one"))
 	}
 
-	if err := s.db.QueryRowContext(ctx, "SELECT size_bytes FROM archives WHERE name = ?;", "b.WACZ").Scan(&sizeBytes); err != nil {
-		t.Fatalf("read size_bytes for b.WACZ: %v", err)
+	if err := s.db.QueryRowContext(ctx, "SELECT size_bytes FROM archives WHERE name = ?;", "b").Scan(&sizeBytes); err != nil {
+		t.Fatalf("read size_bytes for b: %v", err)
 	}
 
 	if sizeBytes != int64(len("two")) {
@@ -263,11 +277,13 @@ func TestSyncFromDiskSkipsAlreadyInsertedFiles(t *testing.T) {
 	ctx := context.Background()
 
 	archivesDir := t.TempDir()
-	existingName := "existing.wacz"
-	newName := "new.wacz"
+	existingName := "existing"
+	existingFilename := "existing.wacz"
+	newName := "new"
+	newFilename := "new.wacz"
 
-	existingPath := filepath.Join(archivesDir, existingName)
-	newPath := filepath.Join(archivesDir, newName)
+	existingPath := filepath.Join(archivesDir, existingFilename)
+	newPath := filepath.Join(archivesDir, newFilename)
 
 	if err := os.WriteFile(existingPath, []byte("existing"), 0644); err != nil {
 		t.Fatalf("write existing file: %v", err)
@@ -282,6 +298,7 @@ func TestSyncFromDiskSkipsAlreadyInsertedFiles(t *testing.T) {
 	if err := s.Insert(ctx, models.Archive{
 		ID:          existingID,
 		Name:        existingName,
+		Filename:    existingFilename,
 		Description: "already in db",
 		SourceURL:   "https://example.com/existing",
 		Tags:        []string{"keep"},
@@ -343,7 +360,8 @@ func TestUpdateMetadata(t *testing.T) {
 
 	if err := s.Insert(ctx, models.Archive{
 		ID:          archiveID,
-		Name:        "old.wacz",
+		Name:        "Old Title",
+		Filename:    "old.wacz",
 		Description: "old description",
 		SourceURL:   "https://example.com/meta",
 		Tags:        []string{"old", "tags"},
@@ -354,12 +372,12 @@ func TestUpdateMetadata(t *testing.T) {
 	}
 
 	t.Run("updates_name_description_and_replaces_tags", func(t *testing.T) {
-		if err := s.UpdateMetadata(ctx, "old.wacz", "new.wacz", "new description", []string{"news", "2026"}); err != nil {
+		if err := s.UpdateMetadata(ctx, archiveID, "New Title", "new description", []string{"news", "2026"}); err != nil {
 			t.Fatalf("update metadata: %v", err)
 		}
 
 		var oldCount int
-		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE name = ?;", "old.wacz").Scan(&oldCount); err != nil {
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE name = ?;", "Old Title").Scan(&oldCount); err != nil {
 			t.Fatalf("count old name: %v", err)
 		}
 		if oldCount != 0 {
@@ -367,10 +385,10 @@ func TestUpdateMetadata(t *testing.T) {
 		}
 
 		var gotID uuid.UUID
-		var description string
+		var description, filename string
 		var gotCreatedAt time.Time
 		var gotSizeBytes int64
-		if err := s.db.QueryRowContext(ctx, "SELECT id, description, created_at, size_bytes FROM archives WHERE name = ?;", "new.wacz").Scan(&gotID, &description, &gotCreatedAt, &gotSizeBytes); err != nil {
+		if err := s.db.QueryRowContext(ctx, "SELECT id, description, filename, created_at, size_bytes FROM archives WHERE name = ?;", "New Title").Scan(&gotID, &description, &filename, &gotCreatedAt, &gotSizeBytes); err != nil {
 			t.Fatalf("read updated archive: %v", err)
 		}
 
@@ -379,6 +397,9 @@ func TestUpdateMetadata(t *testing.T) {
 		}
 		if description != "new description" {
 			t.Fatalf("description mismatch: got %q, want %q", description, "new description")
+		}
+		if filename != "old.wacz" {
+			t.Fatalf("filename changed: got %q, want %q", filename, "old.wacz")
 		}
 		if !gotCreatedAt.Equal(createdAt) {
 			t.Fatalf("created_at changed: got %s, want %s", gotCreatedAt.UTC(), createdAt.UTC())
@@ -417,12 +438,12 @@ func TestUpdateMetadata(t *testing.T) {
 	})
 
 	t.Run("same_name_updates_description_and_replaces_tags", func(t *testing.T) {
-		if err := s.UpdateMetadata(ctx, "new.wacz", "new.wacz", "desc with same name", []string{"updated"}); err != nil {
+		if err := s.UpdateMetadata(ctx, archiveID, "New Title", "desc with same name", []string{"updated"}); err != nil {
 			t.Fatalf("update metadata with same name: %v", err)
 		}
 
 		var description string
-		if err := s.db.QueryRowContext(ctx, "SELECT description FROM archives WHERE name = ?;", "new.wacz").Scan(&description); err != nil {
+		if err := s.db.QueryRowContext(ctx, "SELECT description FROM archives WHERE name = ?;", "New Title").Scan(&description); err != nil {
 			t.Fatalf("read description: %v", err)
 		}
 		if description != "desc with same name" {
@@ -455,7 +476,7 @@ func TestUpdateMetadata(t *testing.T) {
 	})
 
 	t.Run("empty_tags_clears_existing_tags", func(t *testing.T) {
-		if err := s.UpdateMetadata(ctx, "new.wacz", "new.wacz", "desc without tags", []string{}); err != nil {
+		if err := s.UpdateMetadata(ctx, archiveID, "New Title", "desc without tags", []string{}); err != nil {
 			t.Fatalf("update metadata with empty tags: %v", err)
 		}
 
@@ -472,7 +493,8 @@ func TestUpdateMetadata(t *testing.T) {
 	t.Run("conflict_returns_name_conflict", func(t *testing.T) {
 		if err := s.Insert(ctx, models.Archive{
 			ID:          uuid.New(),
-			Name:        "other.wacz",
+			Name:        "Other Title",
+			Filename:    "other.wacz",
 			Description: "existing target",
 			SourceURL:   "https://example.com/other",
 			Tags:        []string{},
@@ -481,14 +503,14 @@ func TestUpdateMetadata(t *testing.T) {
 			t.Fatalf("insert other archive: %v", err)
 		}
 
-		err := s.UpdateMetadata(ctx, "new.wacz", "other.wacz", "should fail", []string{"x"})
+		err := s.UpdateMetadata(ctx, archiveID, "Other Title", "should fail", []string{"x"})
 		if !errors.Is(err, ErrArchiveNameConflict) {
 			t.Fatalf("expected ErrArchiveNameConflict, got %v", err)
 		}
 	})
 
 	t.Run("missing_archive_returns_not_found", func(t *testing.T) {
-		err := s.UpdateMetadata(ctx, "missing.wacz", "unused.wacz", "irrelevant", []string{"x"})
+		err := s.UpdateMetadata(ctx, uuid.New(), "Unused Title", "irrelevant", []string{"x"})
 		if !errors.Is(err, ErrArchiveNotFound) {
 			t.Fatalf("expected ErrArchiveNotFound, got %v", err)
 		}
@@ -500,7 +522,7 @@ func TestDeleteErrors(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing_archive_returns_not_found", func(t *testing.T) {
-		err := s.Delete(ctx, "missing.wacz")
+		err := s.Delete(ctx, uuid.New())
 		if !errors.Is(err, ErrArchiveNotFound) {
 			t.Fatalf("expected ErrArchiveNotFound, got %v", err)
 		}
@@ -510,7 +532,8 @@ func TestDeleteErrors(t *testing.T) {
 		archiveID := uuid.New()
 		if err := s.Insert(ctx, models.Archive{
 			ID:          archiveID,
-			Name:        "delete-me.wacz",
+			Name:        "Delete Me",
+			Filename:    "delete-me.wacz",
 			Description: "to delete",
 			SourceURL:   "https://example.com/delete",
 			Tags:        []string{"x", "y"},
@@ -519,7 +542,7 @@ func TestDeleteErrors(t *testing.T) {
 			t.Fatalf("insert archive: %v", err)
 		}
 
-		if err := s.Delete(ctx, "delete-me.wacz"); err != nil {
+		if err := s.Delete(ctx, archiveID); err != nil {
 			t.Fatalf("delete archive: %v", err)
 		}
 
@@ -539,4 +562,148 @@ func TestDeleteErrors(t *testing.T) {
 			t.Fatalf("expected cascade delete on tags, got count=%d", tagCount)
 		}
 	})
+}
+
+func TestRunMigrationsAddsFilenameAndBackfillsExistingRows(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "archiver.db")
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+
+	if _, err := db.Exec(migrationV1); err != nil {
+		t.Fatalf("apply migration v1 fixture: %v", err)
+	}
+	if _, err := db.Exec(migrationV2); err != nil {
+		t.Fatalf("apply migration v2 fixture: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 2;"); err != nil {
+		t.Fatalf("set v2 user_version fixture: %v", err)
+	}
+
+	archiveID := uuid.New()
+	if _, err := db.Exec(
+		"INSERT INTO archives (id, name, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?);",
+		archiveID,
+		"legacy-name.wacz",
+		"legacy description",
+		"https://legacy.example",
+		time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		int64(1234),
+	); err != nil {
+		t.Fatalf("insert legacy archive fixture: %v", err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatalf("close fixture db: %v", err)
+	}
+
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.RunMigrations(); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	version, err := s.userVersion()
+	if err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+	if version < 3 {
+		t.Fatalf("expected schema version >= 3 after filename migration, got %d", version)
+	}
+
+	if !archiveColumnExists(t, s.db, "filename") {
+		t.Fatal("expected archives.filename column to exist")
+	}
+
+	var name, filename string
+	if err := s.db.QueryRow("SELECT name, filename FROM archives WHERE id = ?;", archiveID).Scan(&name, &filename); err != nil {
+		t.Fatalf("read migrated archive: %v", err)
+	}
+
+	if name != "legacy-name.wacz" {
+		t.Fatalf("expected migration to preserve legacy display name, got %q", name)
+	}
+	if filename != "legacy-name.wacz" {
+		t.Fatalf("expected migration to backfill filename from legacy name, got %q", filename)
+	}
+}
+
+func TestSyncFromDiskStoresFilenameSeparatelyFromDisplayName(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	ensureFilenameColumnForExpectation(t, s.db)
+
+	archivesDir := t.TempDir()
+	archivePath := filepath.Join(archivesDir, "Disk Archive.wacz")
+	if err := os.WriteFile(archivePath, []byte("archive bytes"), 0644); err != nil {
+		t.Fatalf("write archive file: %v", err)
+	}
+
+	if err := s.SyncFromDisk(ctx, archivesDir); err != nil {
+		t.Fatalf("sync from disk: %v", err)
+	}
+
+	var name string
+	var filename sql.NullString
+	if err := s.db.QueryRowContext(ctx, "SELECT name, filename FROM archives;").Scan(&name, &filename); err != nil {
+		t.Fatalf("read synced archive: %v", err)
+	}
+
+	if name != "Disk Archive" {
+		t.Fatalf("expected display name to be derived from filename without .wacz, got %q", name)
+	}
+	if !filename.Valid || filename.String != "Disk Archive.wacz" {
+		t.Fatalf("expected filename to preserve the actual disk filename, got valid=%v value=%q", filename.Valid, filename.String)
+	}
+}
+
+func ensureFilenameColumnForExpectation(t *testing.T, db *sql.DB) {
+	t.Helper()
+
+	if archiveColumnExists(t, db, "filename") {
+		return
+	}
+
+	if _, err := db.Exec("ALTER TABLE archives ADD COLUMN filename TEXT;"); err != nil {
+		t.Fatalf("add filename column fixture: %v", err)
+	}
+}
+
+func archiveColumnExists(t *testing.T, db *sql.DB, column string) bool {
+	t.Helper()
+
+	rows, err := db.Query("PRAGMA table_info(archives);")
+	if err != nil {
+		t.Fatalf("read archives table info: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &primaryKey); err != nil {
+			t.Fatalf("scan archives table info: %v", err)
+		}
+		if name == column {
+			return true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate archives table info: %v", err)
+	}
+
+	return false
 }

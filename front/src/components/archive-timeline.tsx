@@ -14,7 +14,7 @@ interface ArchiveTimelineProps {
   selectedArchive: string;
   rangeStart: Date;
   rangeEnd: Date;
-  onSelect: (archiveName: string) => void;
+  onSelect: (archiveId: string) => void;
   onRangeChange: (start: Date, end: Date) => void;
 }
 
@@ -146,7 +146,7 @@ export function ArchiveTimeline({
           // Clamp for rendering position so they animate from/to the edges
           ratio = Math.max(-0.05, Math.min(1.05, ratio));
           const leftPercent = ratio * 100;
-          const isSelected = archive.name === selectedArchive;
+          const isSelected = archive.id === selectedArchive;
 
           return (
             <Tooltip key={archive.id}>
@@ -184,7 +184,7 @@ export function ArchiveTimeline({
 
                       onRangeChange(new Date(newStartMs), new Date(newEndMs));
                     } else {
-                      onSelect(archive.name);
+                      onSelect(archive.id);
                     }
                   }}
                 >

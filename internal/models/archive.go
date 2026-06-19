@@ -9,6 +9,7 @@ import (
 type Archive struct {
 	ID          uuid.UUID `json:"id"`
 	Name        string    `json:"name"`
+	Filename    string    `json:"filename"`
 	Description string    `json:"description"`
 	SourceURL   string    `json:"source_url"`
 	Tags        []string  `json:"tags"`

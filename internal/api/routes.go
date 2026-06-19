@@ -63,9 +63,9 @@ func (handler *Handler) SetRoutes(e *echo.Echo) {
 	apiGroup.POST("/jobs", handler.HandleNewJob)
 	apiGroup.GET("/jobs", handler.HandleGetJobs)
 	apiGroup.GET("/archives", handler.HandleGetArchives)
-	apiGroup.GET("/archives/:archiveName", handler.HandleGetArchive)
-	apiGroup.DELETE("/archives/:archiveName", handler.HandleDeleteArchive)
-	apiGroup.PUT("/archives/:archiveName", handler.HandleModifyArchiveMetadata)
+	apiGroup.GET("/archives/:archiveId", handler.HandleGetArchive)
+	apiGroup.DELETE("/archives/:archiveId", handler.HandleDeleteArchive)
+	apiGroup.PUT("/archives/:archiveId", handler.HandleModifyArchiveMetadata)
 
 	dist := echo.MustSubFS(frontendDist, "dist")
 
