@@ -57,7 +57,7 @@ func (handler *Handler) HandleGetArchive(c *echo.Context) error {
 
 func (handler *Handler) HandleDeleteArchive(c *echo.Context) error {
 	archiveId, err := uuid.Parse(c.Param("archiveId"))
-	if err != nil  {
+	if err != nil {
 		return respondWithError(http.StatusBadRequest, errInvalidId, c)
 	}
 
@@ -68,7 +68,7 @@ func (handler *Handler) HandleDeleteArchive(c *echo.Context) error {
 		}
 		return respondWithError(http.StatusInternalServerError, errInternalServerError, c)
 	}
-	
+
 	path := filepath.Join(handler.archivesDir, filename)
 
 	tmpDir, err := os.MkdirTemp(handler.archivesDir, "archiver")
