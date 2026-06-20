@@ -1,40 +1,16 @@
-package api
+package queue
 
 import (
-	"context"
 	"testing"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
-
-func newTestRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
-	t.Helper()
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("failed to start miniredis: %v", err)
-	}
-
-	rdb := redis.NewClient(&redis.Options{
-		Addr: mr.Addr(),
-	})
-
-	t.Cleanup(func() {
-		rdb.Close()
-		mr.Close()
-	})
-
-	return mr, rdb
-}
-
 func TestJobRepository_GetAllJobs_Empty(t *testing.T) {
-	_, rdb := newTestRedis(t)
+	_, rdb, ctx := newTestRedis(t)
 	repo := NewJobRepository(rdb)
 
-	ctx := context.Background()
 	jobs, err := repo.GetAllJobs(ctx)
 	assert.NoError(t, err)
 	assert.NotNil(t, jobs)
@@ -42,10 +18,8 @@ func TestJobRepository_GetAllJobs_Empty(t *testing.T) {
 }
 
 func TestJobRepository_GetAllJobs_Success(t *testing.T) {
-	mr, rdb := newTestRedis(t)
+	mr, rdb, ctx := newTestRedis(t)
 	repo := NewJobRepository(rdb)
-
-	ctx := context.Background()
 
 	// Setup 2 valid jobs in miniredis
 	jobID1 := uuid.New()
@@ -85,10 +59,8 @@ func TestJobRepository_GetAllJobs_Success(t *testing.T) {
 }
 
 func TestJobRepository_GetAllJobs_MixedMalformedAndMissing(t *testing.T) {
-	mr, rdb := newTestRedis(t)
+	mr, rdb, ctx := newTestRedis(t)
 	repo := NewJobRepository(rdb)
-
-	ctx := context.Background()
 
 	// Seed database with:
 	// 1. One valid job ID with valid hash
@@ -113,13 +85,12 @@ func TestJobRepository_GetAllJobs_MixedMalformedAndMissing(t *testing.T) {
 }
 
 func TestJobRepository_GetAllJobs_RedisError(t *testing.T) {
-	_, rdb := newTestRedis(t)
+	_, rdb, ctx := newTestRedis(t)
 	repo := NewJobRepository(rdb)
 
 	// Close client connection to simulate connection error
 	rdb.Close()
 
-	ctx := context.Background()
 	jobs, err := repo.GetAllJobs(ctx)
 	assert.Error(t, err)
 	assert.Nil(t, jobs)

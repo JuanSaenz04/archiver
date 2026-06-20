@@ -8,28 +8,12 @@ import (
 	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
 
 const testConsumerName = "test-consumer-1"
-
-func newTestRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client, context.Context) {
-	t.Helper()
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("failed to start miniredis: %v", err)
-	}
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	ctx := context.Background()
-	t.Cleanup(func() {
-		rdb.Close()
-		mr.Close()
-	})
-	return mr, rdb, ctx
-}
 
 func startWorker(t *testing.T, ctx context.Context, rdb *redis.Client, process Processor) <-chan error {
 	t.Helper()
