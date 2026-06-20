@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
+
 func TestJobRepository_GetAllJobs_Empty(t *testing.T) {
 	_, rdb, ctx := newTestRedis(t)
 	repo := NewJobRepository(rdb)
