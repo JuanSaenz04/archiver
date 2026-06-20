@@ -1,6 +1,7 @@
 export interface Archive {
     id: string;
     name: string;
+    filename: string;
     description: string;
     source_url: string;
     tags: string[];

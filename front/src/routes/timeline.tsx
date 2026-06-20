@@ -106,7 +106,7 @@ function TimelinePage() {
       </div>
 
       <div className="flex-1 min-h-0 px-4 pb-4">
-        <ArchiveViewer archiveName={selectedArchive} />
+        <ArchiveViewer archiveId={selectedArchive} />
       </div>
 
       <div className="shrink-0 z-10 bg-background">

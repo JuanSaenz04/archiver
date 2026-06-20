@@ -18,12 +18,16 @@ import (
 type Crawler struct {
 	timeoutInSeconds int
 	archiveStore     *store.ArchiveStore
+	collectionsDir   string
+	runCmd           func(cmd *exec.Cmd) error
 }
 
 func NewCrawler(timeoutInSeconds int, archiveStore *store.ArchiveStore) *Crawler {
 	return &Crawler{
 		timeoutInSeconds: timeoutInSeconds,
 		archiveStore:     archiveStore,
+		collectionsDir:   "collections",
+		runCmd:           func(cmd *exec.Cmd) error { return cmd.Run() },
 	}
 }
 
@@ -60,7 +64,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := crawler.runCmd(cmd); err != nil {
 		slog.Error("crawl command failed", "job_id", jobID, "url", archive.SourceURL, "error", err)
 		return err
 	}
@@ -76,13 +80,13 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		return err
 	}
 
-	srcPath := fmt.Sprintf("collections/%s/%s.wacz", jobID, jobID)
-	name, ok := archiveutil.NormalizeArchiveName(archive.Name)
+	srcPath := filepath.Join(crawler.collectionsDir, jobID, jobID+".wacz")
+	filename, ok := archiveutil.NormalizeArchiveName(archive.Name)
 	if !ok {
-		name = jobID + ".wacz"
+		filename = jobID + ".wacz"
 	}
-	archive.Name = name
-	dstPath := filepath.Join(archivesDir, name)
+	archive.Filename = filename
+	dstPath := filepath.Join(archivesDir, filename)
 
 	src, err := os.Open(srcPath)
 	if err != nil {

@@ -114,12 +114,11 @@ export function ArchiveDetailsDialog({
         tags: parsedTags,
       };
 
-      await apiClient.put(`/archives/${archive.name}`, payload);
-      const newName = editName + ".wacz";
+      await apiClient.put(`/archives/${archive.id}`, payload);
 
       const updatedArchive: Archive = {
         ...archive,
-        name: newName,
+        name: editName,
         description: editDescription,
         tags: parsedTags,
       };
@@ -141,7 +140,7 @@ export function ArchiveDetailsDialog({
     setIsLoading(true);
     setError(null);
     try {
-      await apiClient.delete(`/archives/${archive.name}`);
+      await apiClient.delete(`/archives/${archive.id}`);
       toast.success(`Archive "${archive.name.replace(".wacz", "")}" deleted`);
       onDeleted(archive.id);
       onOpenChange(false);
@@ -172,7 +171,7 @@ export function ArchiveDetailsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-125">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="size-5 text-primary" />
@@ -203,7 +202,7 @@ export function ArchiveDetailsDialog({
               <div className="space-y-1">
                 <Label className="text-muted-foreground">Filename</Label>
                 <div className="text-sm font-mono bg-muted p-2 rounded-md break-all">
-                  {archive.name}
+                  {archive.filename}
                 </div>
               </div>
             )}
@@ -216,10 +215,10 @@ export function ArchiveDetailsDialog({
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   placeholder="Enter archive description..."
-                  className="min-h-[100px] resize-none"
+                  className="min-h-25 resize-none"
                 />
               ) : (
-                <div className="text-sm min-h-[60px] p-2 rounded-md border bg-muted/30 whitespace-pre-wrap">
+                <div className="text-sm min-h-15 p-2 rounded-md border bg-muted/30 whitespace-pre-wrap">
                   {archive.description || (
                     <span className="text-muted-foreground italic">
                       No description provided

@@ -1,13 +1,14 @@
 package api
 
 import (
+	"github.com/JuanSaenz04/archiver/internal/queue"
 	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/redis/go-redis/v9"
 )
 
 type Handler struct {
 	rdb          *redis.Client
-	jobRepo      *JobRepository
+	jobRepo      *queue.JobRepository
 	archivesDir  string
 	archiveStore *store.ArchiveStore
 }
@@ -15,7 +16,7 @@ type Handler struct {
 func NewHandler(rdb *redis.Client, archivesDir string, archiveStore *store.ArchiveStore) *Handler {
 	return &Handler{
 		rdb:          rdb,
-		jobRepo:      NewJobRepository(rdb),
+		jobRepo:      queue.NewJobRepository(rdb),
 		archivesDir:  archivesDir,
 		archiveStore: archiveStore,
 	}

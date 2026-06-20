@@ -78,19 +78,13 @@ export function AppSidebar({
   }, [archives, searchQuery, selectedTags]);
 
   const handleArchiveDeleted = (archiveId: string) => {
-    const deleted = archives.find((a) => a.id === archiveId);
-    if (deleted && selectedArchive === deleted.name) {
+    if (selectedArchive === archiveId) {
       onArchiveSelected("");
     }
     void onRefresh();
   };
 
   const handleArchiveUpdated = (updatedArchive: Archive) => {
-    const oldArchive = archives.find((a) => a.id === updatedArchive.id);
-    if (oldArchive && selectedArchive === oldArchive.name) {
-      onArchiveSelected(updatedArchive.name);
-    }
-
     if (detailArchive?.id === updatedArchive.id) {
       setDetailArchive(updatedArchive);
     }
@@ -256,16 +250,16 @@ export function AppSidebar({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <SidebarMenuButton
-                            isActive={selectedArchive === archive.name}
+                            isActive={selectedArchive === archive.id}
                             onClick={() => {
-                              onArchiveSelected(archive.name);
+                              onArchiveSelected(archive.id);
                             }}
                             className="group/btn data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
                           >
                             <File
                               className={cn(
                                 "size-4",
-                                selectedArchive === archive.name &&
+                                selectedArchive === archive.id &&
                                   "text-primary",
                               )}
                             />

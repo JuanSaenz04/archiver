@@ -53,6 +53,10 @@ Docker Compose will use the `latest` GHCR images by default. Once the containers
 > **Security Note**: This application does not include built-in authentication or HTTPS. It is strongly recommended to:
 > 1. Serve it behind a **Reverse Proxy** (like Nginx, Caddy, or Traefik) for HTTPS termination.
 > 2. Use an **Authentication Proxy** (such as [Authelia](https://www.authelia.com/), [Authentik](https://goauthentik.io/), or [Tinyauth](https://tinyauth.app/)) to provide a login layer before accessing the application.
+>
+> **Archive viewer trust model**: Archived pages can contain JavaScript. Because Archiver serves the embedded WACZ viewer and the API from the same origin by default, replaying an untrusted archive may allow JavaScript inside that archive to make authenticated requests to Archiver from your browser session. For example, a malicious archive could list, download, modify, or delete other archives that your authenticated browser can access.
+>
+> Treat archives you replay in the embedded viewer as trusted content. If you need to inspect untrusted archives or store highly sensitive captures, consider isolating replay on a separate origin, subdomain, port, or separate Archiver instance.
 
 ## License
 This project is licensed under the AGPLv3 License - see the [LICENSE](LICENSE) file for details.

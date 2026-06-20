@@ -31,8 +31,8 @@ func (s *ArchiveStore) SyncFromDisk(ctx context.Context, archivesDir string) err
 	defer tx.Rollback()
 
 	const insertArchiveQuery = `
-INSERT OR IGNORE INTO archives (id, name, description, source_url, created_at, size_bytes)
-VALUES (?, ?, '', '', ?, ?);
+INSERT OR IGNORE INTO archives (id, name, filename, description, source_url, created_at, size_bytes)
+VALUES (?, ?, ?, '', '', ?, ?);
 `
 
 	stmt, err := tx.PrepareContext(ctx, insertArchiveQuery)
@@ -55,7 +55,14 @@ VALUES (?, ?, '', '', ?, ?);
 			return err
 		}
 
-		if _, err := stmt.ExecContext(ctx, uuid.New(), file.Name(), fileInfo.ModTime(), fileInfo.Size()); err != nil {
+		if _, err := stmt.ExecContext(
+			ctx,
+			uuid.New(),
+			strings.TrimSuffix(file.Name(), filepath.Ext(file.Name())),
+			file.Name(),
+			fileInfo.ModTime(),
+			fileInfo.Size(),
+		); err != nil {
 			return err
 		}
 	}
@@ -65,7 +72,7 @@ VALUES (?, ?, '', '', ?, ?);
 
 func (s *ArchiveStore) List(ctx context.Context) ([]models.Archive, error) {
 	const query = `
-SELECT a.id, a.name, a.description, a.source_url, a.created_at, a.size_bytes, t.tag
+SELECT a.id, a.name, a.filename, a.description, a.source_url, a.created_at, a.size_bytes, t.tag
 FROM archives a
 LEFT JOIN tags t ON t.archive_id = a.id;
 `
@@ -81,14 +88,14 @@ LEFT JOIN tags t ON t.archive_id = a.id;
 
 	for rows.Next() {
 		var (
-			id                           uuid.UUID
-			name, description, sourceURL string
-			tag                          sql.NullString
-			createdAt                    time.Time
-			sizeBytes                    int64
+			id                                     uuid.UUID
+			name, filename, description, sourceURL string
+			tag                                    sql.NullString
+			createdAt                              time.Time
+			sizeBytes                              int64
 		)
 
-		if err := rows.Scan(&id, &name, &description, &sourceURL, &createdAt, &sizeBytes, &tag); err != nil {
+		if err := rows.Scan(&id, &name, &filename, &description, &sourceURL, &createdAt, &sizeBytes, &tag); err != nil {
 			return nil, err
 		}
 
@@ -100,6 +107,7 @@ LEFT JOIN tags t ON t.archive_id = a.id;
 			archive := models.Archive{
 				ID:          id,
 				Name:        name,
+				Filename:    filename,
 				Description: description,
 				SourceURL:   sourceURL,
 				Tags:        make([]string, 0),
@@ -130,14 +138,14 @@ func (s *ArchiveStore) Insert(ctx context.Context, a models.Archive) error {
 	defer tx.Rollback()
 
 	archiveQuery := `
-INSERT INTO archives (id, name, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO archives (id, name, filename, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?);
 	`
-	archiveArgs := []any{a.ID, a.Name, a.Description, a.SourceURL, a.CreatedAt, a.SizeBytes}
+	archiveArgs := []any{a.ID, a.Name, a.Filename, a.Description, a.SourceURL, a.CreatedAt, a.SizeBytes}
 	if a.CreatedAt.IsZero() {
 		archiveQuery = `
-INSERT INTO archives (id, name, description, source_url, size_bytes) VALUES (?, ?, ?, ?, ?);
+INSERT INTO archives (id, name, filename, description, source_url, size_bytes) VALUES (?, ?, ?, ?, ?, ?);
 		`
-		archiveArgs = []any{a.ID, a.Name, a.Description, a.SourceURL, a.SizeBytes}
+		archiveArgs = []any{a.ID, a.Name, a.Filename, a.Description, a.SourceURL, a.SizeBytes}
 	}
 
 	if _, err := tx.ExecContext(ctx, archiveQuery, archiveArgs...); err != nil {
@@ -161,45 +169,28 @@ INSERT INTO tags (archive_id, tag) VALUES (?, ?)
 	return tx.Commit()
 }
 
-func (s *ArchiveStore) UpdateMetadata(ctx context.Context, oldName, newName, description string, tags []string) error {
+func (s *ArchiveStore) UpdateMetadata(ctx context.Context, archiveId uuid.UUID, newName, description string, tags []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	const getIDQuery = `
-SELECT id
-FROM archives
-WHERE name = ?;
-	`
-
-	var id uuid.UUID
-	if err := tx.QueryRowContext(ctx, getIDQuery, oldName).Scan(&id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrArchiveNotFound
-		}
-
-		return err
-	}
-
-	if oldName != newName {
-		const renameQuery = `
+	const renameQuery = `
 UPDATE archives SET name = ?
 WHERE id = ?;
 		`
 
-		if res, err := tx.ExecContext(ctx, renameQuery, newName, id); err != nil {
-			if isUniqueConstraint(err) {
-				return ErrArchiveNameConflict
-			}
+	if res, err := tx.ExecContext(ctx, renameQuery, newName, archiveId); err != nil {
+		if isUniqueConstraint(err) {
+			return ErrArchiveNameConflict
+		}
 
-			return err
-		} else {
-			n, _ := res.RowsAffected()
-			if n == 0 {
-				return ErrArchiveNotFound
-			}
+		return err
+	} else {
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return ErrArchiveNotFound
 		}
 	}
 
@@ -208,7 +199,7 @@ UPDATE archives SET description = ?
 WHERE id = ?;
 	`
 
-	if res, err := tx.ExecContext(ctx, changeDescriptionQuery, description, id); err != nil {
+	if res, err := tx.ExecContext(ctx, changeDescriptionQuery, description, archiveId); err != nil {
 		return err
 	} else {
 		n, _ := res.RowsAffected()
@@ -221,7 +212,7 @@ WHERE id = ?;
 DELETE FROM tags
 WHERE archive_id = ?;
 	`
-	if _, err := tx.ExecContext(ctx, deleteOldTagsQuery, id); err != nil {
+	if _, err := tx.ExecContext(ctx, deleteOldTagsQuery, archiveId); err != nil {
 		return err
 	}
 
@@ -236,7 +227,7 @@ INSERT INTO tags (archive_id, tag) VALUES (?, ?);
 	defer stmt.Close()
 
 	for _, tag := range tags {
-		if _, err := stmt.ExecContext(ctx, id, tag); err != nil {
+		if _, err := stmt.ExecContext(ctx, archiveId, tag); err != nil {
 			return err
 		}
 	}
@@ -244,13 +235,13 @@ INSERT INTO tags (archive_id, tag) VALUES (?, ?);
 	return tx.Commit()
 }
 
-func (s *ArchiveStore) Delete(ctx context.Context, name string) error {
+func (s *ArchiveStore) Delete(ctx context.Context, archiveId uuid.UUID) error {
 	const deleteQuery = `
 DELETE FROM archives
-WHERE name = ?;
+WHERE id = ?;
 	`
 
-	if res, err := s.db.ExecContext(ctx, deleteQuery, name); err != nil {
+	if res, err := s.db.ExecContext(ctx, deleteQuery, archiveId); err != nil {
 		return err
 	} else {
 		n, _ := res.RowsAffected()
@@ -260,6 +251,27 @@ WHERE name = ?;
 	}
 
 	return nil
+}
+
+func (s *ArchiveStore) GetFilename(ctx context.Context, archiveId uuid.UUID) (string, error) {
+	const getFilenameQuery = `
+SELECT filename
+FROM archives
+WHERE id = ?;
+	`
+
+	row := s.db.QueryRowContext(ctx, getFilenameQuery, archiveId)
+
+	var filename string
+	if err := row.Scan(&filename); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrArchiveNotFound
+		} else {
+			return "", err
+		}
+	}
+
+	return filename, nil
 }
 
 func isUniqueConstraint(err error) bool {
