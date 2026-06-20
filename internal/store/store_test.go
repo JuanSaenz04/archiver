@@ -572,10 +572,10 @@ func TestRunMigrationsAddsFilenameAndBackfillsExistingRows(t *testing.T) {
 		t.Fatalf("open sqlite db: %v", err)
 	}
 
-	if _, err := db.Exec(migrationV1); err != nil {
+	if _, err := db.Exec(migrationSQL(t, 1)); err != nil {
 		t.Fatalf("apply migration v1 fixture: %v", err)
 	}
-	if _, err := db.Exec(migrationV2); err != nil {
+	if _, err := db.Exec(migrationSQL(t, 2)); err != nil {
 		t.Fatalf("apply migration v2 fixture: %v", err)
 	}
 	if _, err := db.Exec("PRAGMA user_version = 2;"); err != nil {
@@ -613,12 +613,15 @@ func TestRunMigrationsAddsFilenameAndBackfillsExistingRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read user_version: %v", err)
 	}
-	if version < 3 {
-		t.Fatalf("expected schema version >= 3 after filename migration, got %d", version)
+	if version != latestMigrationVersion(t) {
+		t.Fatalf("expected schema version %d after migrations, got %d", latestMigrationVersion(t), version)
 	}
 
 	if !archiveColumnExists(t, s.db, "filename") {
 		t.Fatal("expected archives.filename column to exist")
+	}
+	if !archiveUniqueIndexExists(t, s.db, "idx_archives_filename_unique") {
+		t.Fatal("expected unique index on archives.filename to exist")
 	}
 
 	var name, filename string
@@ -631,6 +634,74 @@ func TestRunMigrationsAddsFilenameAndBackfillsExistingRows(t *testing.T) {
 	}
 	if filename != "legacy-name.wacz" {
 		t.Fatalf("expected migration to backfill filename from legacy name, got %q", filename)
+	}
+}
+
+func TestSyncFromDiskDoesNotDuplicateLegacyRowsByFilename(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "archiver.db")
+	archivesDir := t.TempDir()
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	if _, err := db.Exec(migrationSQL(t, 1)); err != nil {
+		t.Fatalf("apply migration v1 fixture: %v", err)
+	}
+	if _, err := db.Exec(migrationSQL(t, 2)); err != nil {
+		t.Fatalf("apply migration v2 fixture: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 2;"); err != nil {
+		t.Fatalf("set v2 user_version fixture: %v", err)
+	}
+
+	archiveID := uuid.New()
+	if _, err := db.Exec(
+		"INSERT INTO archives (id, name, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?);",
+		archiveID,
+		"legacy-name.wacz",
+		"legacy description",
+		"https://legacy.example",
+		time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		int64(1234),
+	); err != nil {
+		t.Fatalf("insert legacy archive fixture: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close fixture db: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(archivesDir, "legacy-name.wacz"), []byte("same file"), 0644); err != nil {
+		t.Fatalf("write archive file: %v", err)
+	}
+
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.RunMigrations(); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	if err := s.SyncFromDisk(context.Background(), archivesDir); err != nil {
+		t.Fatalf("sync from disk: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM archives WHERE filename = ?;", "legacy-name.wacz").Scan(&count); err != nil {
+		t.Fatalf("count archives by filename: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected sync to ignore existing filename, got %d rows", count)
+	}
+
+	var name string
+	if err := s.db.QueryRow("SELECT name FROM archives WHERE id = ?;", archiveID).Scan(&name); err != nil {
+		t.Fatalf("read legacy row name: %v", err)
+	}
+	if name != "legacy-name.wacz" {
+		t.Fatalf("expected legacy display name to be preserved, got %q", name)
 	}
 }
 
@@ -664,6 +735,38 @@ func TestSyncFromDiskStoresFilenameSeparatelyFromDisplayName(t *testing.T) {
 	}
 }
 
+func migrationSQL(t *testing.T, version int) string {
+	t.Helper()
+
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+
+	for _, migration := range migrations {
+		if migration.version == version {
+			return migration.sql
+		}
+	}
+
+	t.Fatalf("migration version %d not found", version)
+	return ""
+}
+
+func latestMigrationVersion(t *testing.T) int {
+	t.Helper()
+
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	if len(migrations) == 0 {
+		t.Fatal("expected at least one migration")
+	}
+
+	return migrations[len(migrations)-1].version
+}
+
 func ensureFilenameColumnForExpectation(t *testing.T, db *sql.DB) {
 	t.Helper()
 
@@ -674,6 +777,37 @@ func ensureFilenameColumnForExpectation(t *testing.T, db *sql.DB) {
 	if _, err := db.Exec("ALTER TABLE archives ADD COLUMN filename TEXT;"); err != nil {
 		t.Fatalf("add filename column fixture: %v", err)
 	}
+}
+
+func archiveUniqueIndexExists(t *testing.T, db *sql.DB, indexName string) bool {
+	t.Helper()
+
+	rows, err := db.Query("PRAGMA index_list(archives);")
+	if err != nil {
+		t.Fatalf("read archives index list: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			seq     int
+			name    string
+			unique  int
+			origin  string
+			partial int
+		)
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			t.Fatalf("scan archives index list: %v", err)
+		}
+		if name == indexName && unique == 1 {
+			return true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate archives index list: %v", err)
+	}
+
+	return false
 }
 
 func archiveColumnExists(t *testing.T, db *sql.DB, column string) bool {
