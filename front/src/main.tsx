@@ -5,6 +5,8 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
+import { loadRuntimeConfig } from "./lib/runtime-config";
+import { RuntimeConfigProvider } from "./components/runtime-config-provider";
 
 // Create a new router instance
 const router = createRouter({ routeTree });
@@ -16,13 +18,28 @@ declare module "@tanstack/react-router" {
   }
 }
 
-// Render the app
-const rootElement = document.getElementById("root")!;
-if (!rootElement.innerHTML) {
+async function renderApp() {
+  const rootElement = document.getElementById("root")!;
+  if (rootElement.innerHTML) return;
+
   const root = ReactDOM.createRoot(rootElement);
-  root.render(
-    <StrictMode>
-      <RouterProvider router={router} />
-    </StrictMode>,
-  );
+  try {
+    const config = await loadRuntimeConfig();
+    root.render(
+      <StrictMode>
+        <RuntimeConfigProvider config={config}>
+          <RouterProvider router={router} />
+        </RuntimeConfigProvider>
+      </StrictMode>,
+    );
+  } catch (error) {
+    console.error(error);
+    root.render(
+      <main className="p-6 font-sans">
+        Unable to load Archiver configuration. Check the API server settings.
+      </main>,
+    );
+  }
 }
+
+void renderApp();

@@ -34,7 +34,8 @@ Open the `.env` file and configure the necessary variables. For a full list of a
     openssl rand -hex 32
     ```
 
-*   **Port**: The default application port is `1080`. You can change this by modifying `APP_PORT` if desired.
+*   **Origins**: Set `APP_PUBLIC_URL` and `REPLAY_PUBLIC_URL` to two different public origins. For local use, the defaults are `http://localhost:1080` and `http://localhost:1081`.
+*   **Ports**: The frontend/API use `1080`; the isolated archive replay server uses `1081`. The example Compose file publishes both through `APP_PORT` and `REPLAY_PORT`.
 
 ### 3. Run the Application
 
@@ -45,18 +46,29 @@ docker compose pull
 docker compose up -d
 ```
 
-Docker Compose will use the `latest` GHCR images by default. Once the containers are running, the user interface will be accessible at:
+Docker Compose will use the `latest` GHCR images by default. Once the containers are running, the user interface and replay server will be accessible at:
 
 `http://localhost:1080` (or your configured `APP_PORT`)
+
+`http://localhost:1081` (or your configured `REPLAY_PORT`)
+
+For production, route separate HTTPS origins to the two ports, for example:
+
+```text
+https://archiver.example.com -> container:1080
+https://replay.example.com   -> container:1081
+```
+
+Both origins should be protected by your authentication proxy. If the reverse proxy connects directly to the container network, the ports do not need to be published on the host.
+
+For frontend development with `pnpm dev`, run the Go API with `APP_PUBLIC_URL=http://localhost:5173` and `REPLAY_PUBLIC_URL=http://localhost:1081`. Vite proxies `/api` to port `1080`, while the iframe connects directly to the replay server.
 
 > [!IMPORTANT]
 > **Security Note**: This application does not include built-in authentication or HTTPS. It is strongly recommended to:
 > 1. Serve it behind a **Reverse Proxy** (like Nginx, Caddy, or Traefik) for HTTPS termination.
 > 2. Use an **Authentication Proxy** (such as [Authelia](https://www.authelia.com/), [Authentik](https://goauthentik.io/), or [Tinyauth](https://tinyauth.app/)) to provide a login layer before accessing the application.
 >
-> **Archive viewer trust model**: Archived pages can contain JavaScript. Because Archiver serves the embedded WACZ viewer and the API from the same origin by default, replaying an untrusted archive may allow JavaScript inside that archive to make authenticated requests to Archiver from your browser session. For example, a malicious archive could list, download, modify, or delete other archives that your authenticated browser can access.
->
-> Treat archives you replay in the embedded viewer as trusted content. If you need to inspect untrusted archives or store highly sensitive captures, consider isolating replay on a separate origin, subdomain, port, or separate Archiver instance.
+> **Archive viewer trust model**: Archived pages can contain JavaScript. Archiver isolates replay on the origin configured by `REPLAY_PUBLIC_URL`; never route that origin to port `1080`, or the main origin to port `1081`. The replay server intentionally exposes only viewer assets and read-only archive delivery. State-changing API requests are accepted only from `APP_PUBLIC_URL`.
 
 ## License
 This project is licensed under the AGPLv3 License - see the [LICENSE](LICENSE) file for details.

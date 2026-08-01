@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -87,23 +89,51 @@ func run() error {
 	}
 
 	handler := api.NewHandler(rdb, archivesDir, archiveStore)
+	appPublicURL, err := publicOriginFromEnv("APP_PUBLIC_URL")
+	if err != nil {
+		return err
+	}
+	replayPublicURL, err := publicOriginFromEnv("REPLAY_PUBLIC_URL")
+	if err != nil {
+		return err
+	}
+	if appPublicURL == replayPublicURL {
+		return errors.New("APP_PUBLIC_URL and REPLAY_PUBLIC_URL must use different origins")
+	}
+	routeConfig := api.RouteConfig{
+		AppPublicURL:    appPublicURL,
+		ReplayPublicURL: replayPublicURL,
+	}
 
-	e := echo.New()
+	mainServer := echo.New()
+	replayServer := echo.New()
 
-	e.IPExtractor = api.GetIPExtractorFromEnv()
+	mainServer.IPExtractor = api.GetIPExtractorFromEnv()
+	replayServer.IPExtractor = api.GetIPExtractorFromEnv()
 
-	handler.SetRoutes(e)
+	handler.SetMainRoutes(mainServer, routeConfig)
+	handler.SetReplayRoutes(replayServer, routeConfig)
 
-	sc := echo.StartConfig{
+	mainConfig := echo.StartConfig{
 		Address:         ":1080",
 		GracefulTimeout: 10 * time.Second,
 	}
+	replayConfig := echo.StartConfig{
+		Address:         ":1081",
+		GracefulTimeout: 10 * time.Second,
+	}
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
-		slog.Info("starting api server", "addr", ":1080", "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
-		if err := sc.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Info("starting api server", "addr", ":1080", "public_url", appPublicURL, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
+		if err := mainConfig.Start(ctx, mainServer); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- fmt.Errorf("start api server: %w", err)
+		}
+	}()
+	go func() {
+		slog.Info("starting replay server", "addr", ":1081", "public_url", replayPublicURL)
+		if err := replayConfig.Start(ctx, replayServer); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("start replay server: %w", err)
 		}
 	}()
 
@@ -115,4 +145,31 @@ func run() error {
 
 	slog.Info("server stopped gracefully")
 	return nil
+}
+
+func publicOriginFromEnv(name string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return "", fmt.Errorf("environment variable %s not set", name)
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("environment variable %s must be an HTTP(S) origin without a path", name)
+	}
+
+	hostname := strings.ToLower(parsed.Hostname())
+	port := parsed.Port()
+	if (parsed.Scheme == "http" && port == "80") || (parsed.Scheme == "https" && port == "443") {
+		port = ""
+	}
+	host := hostname
+	if strings.Contains(hostname, ":") || port != "" {
+		host = net.JoinHostPort(hostname, port)
+		if port == "" {
+			host = "[" + hostname + "]"
+		}
+	}
+
+	return parsed.Scheme + "://" + host, nil
 }

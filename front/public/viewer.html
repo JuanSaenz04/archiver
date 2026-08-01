@@ -26,14 +26,21 @@
             embed="default"
             replayBase="/replay/"
             sandbox
+            requireSubdomainIframe
         ></replay-web-page>
         <script>
             const params = new URLSearchParams(window.location.search);
             const source = params.get("source");
             if (source) {
-                document
-                    .querySelector("replay-web-page")
-                    .setAttribute("source", source);
+                const sourceUrl = new URL(source, window.location.origin);
+                if (
+                    sourceUrl.origin === window.location.origin &&
+                    sourceUrl.pathname.startsWith("/archives/")
+                ) {
+                    document
+                        .querySelector("replay-web-page")
+                        .setAttribute("source", sourceUrl.href);
+                }
             }
         </script>
     </body>
