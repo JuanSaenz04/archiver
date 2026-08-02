@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import {
 	FileArchive,
 	Info,
+	LoaderCircle,
 	RefreshCw,
 	Search,
 	SlidersHorizontal,
@@ -21,6 +22,7 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { gsap, useGSAP } from "@/lib/motion";
+import { ARCHIVE_PAGE_SIZE } from "@/lib/queries";
 
 interface Props {
 	archives: Archive[];
@@ -54,7 +56,6 @@ export function ArchiveLibrary({
 	loadingMore,
 	onLoadMore,
 }: Props) {
-	const libraryRef = useRef<HTMLElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const loadMoreRef = useRef<HTMLDivElement>(null);
 	const [details, setDetails] = useState<Archive | null>(null);
@@ -65,7 +66,6 @@ export function ArchiveLibrary({
 	const update = (archive: Archive) => {
 		setDetails(archive);
 	};
-	const visibleArchiveKey = archives.map((archive) => archive.id).join(",");
 	useEffect(() => {
 		const target = loadMoreRef.current;
 		if (!target || !hasMore) return;
@@ -78,26 +78,8 @@ export function ArchiveLibrary({
 		observer.observe(target);
 		return () => observer.disconnect();
 	}, [hasMore, loadingMore, onLoadMore]);
-	useGSAP(
-		() => {
-			const media = gsap.matchMedia();
-			media.add("(prefers-reduced-motion: no-preference)", () => {
-				const rows = libraryRef.current?.querySelectorAll("[data-archive-row]");
-				if (rows?.length) {
-					gsap.fromTo(
-						rows,
-						{ opacity: 0, y: 5 },
-						{ opacity: 1, y: 0, duration: 0.18, stagger: 0.025 },
-					);
-				}
-			});
-			return () => media.revert();
-		},
-		{ scope: libraryRef, dependencies: [visibleArchiveKey] },
-	);
 	return (
 		<aside
-			ref={libraryRef}
 			className="flex min-h-0 w-full flex-col bg-surface md:w-(--library-width) md:border-r"
 			aria-label="Archive library"
 		>
@@ -212,8 +194,11 @@ export function ArchiveLibrary({
 					/>
 				) : archives.length ? (
 					<div className="space-y-1">
-						{archives.map((a) => (
-							<div key={a.id} data-archive-row className="group relative">
+						{archives.map((a, index) => (
+							<AnimatedArchiveRow
+								key={a.id}
+								animationOrder={index % ARCHIVE_PAGE_SIZE}
+							>
 								<button
 									type="button"
 									onClick={() => onSelect(a.id)}
@@ -268,11 +253,17 @@ export function ArchiveLibrary({
 								>
 									<Info className="size-4" />
 								</Button>
-							</div>
+							</AnimatedArchiveRow>
 						))}
 						<div ref={loadMoreRef} className="flex min-h-12 items-center justify-center">
 							{loadingMore && (
-								<span className="text-xs text-muted-foreground">Loading more…</span>
+								<span
+									role="status"
+									className="flex items-center gap-2 text-xs text-muted-foreground"
+								>
+									<LoaderCircle className="size-4 animate-spin" />
+									Loading more…
+								</span>
 							)}
 							{error && (
 								<Button size="sm" variant="ghost" onClick={() => void onLoadMore()}>
@@ -318,6 +309,42 @@ export function ArchiveLibrary({
 		</aside>
 	);
 }
+
+function AnimatedArchiveRow({
+	children,
+	animationOrder,
+}: {
+	children: ReactNode;
+	animationOrder: number;
+}) {
+	const rowRef = useRef<HTMLDivElement>(null);
+	useGSAP(
+		() => {
+			const media = gsap.matchMedia();
+			media.add("(prefers-reduced-motion: no-preference)", () => {
+				gsap.fromTo(
+					rowRef.current,
+					{ autoAlpha: 0, y: 12 },
+					{
+						autoAlpha: 1,
+						y: 0,
+						duration: 0.34,
+						delay: animationOrder * 0.018,
+						ease: "power2.out",
+					},
+				);
+			});
+			return () => media.revert();
+		},
+		{ scope: rowRef },
+	);
+	return (
+		<div ref={rowRef} className="group relative">
+			{children}
+		</div>
+	);
+}
+
 function State({
 	title,
 	message,
