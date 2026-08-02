@@ -19,11 +19,13 @@ interface ArchiveFilters {
 	tags: string[];
 }
 
+export const ARCHIVE_PAGE_SIZE = 30;
+
 export const archivePagesQueryOptions = (filters: ArchiveFilters) =>
 	infiniteQueryOptions({
 		queryKey: [...queryKeys.archives, "pages", filters] as const,
 		queryFn: ({ pageParam }) => {
-			const params = new URLSearchParams({ limit: "30" });
+			const params = new URLSearchParams({ limit: String(ARCHIVE_PAGE_SIZE) });
 			if (pageParam) params.set("cursor", pageParam);
 			if (filters.search.trim()) params.set("q", filters.search.trim());
 			filters.tags.forEach((tag) => params.append("tag", tag));
