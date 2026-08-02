@@ -41,6 +41,7 @@ func (handler *Handler) setMainRoutes(e *echo.Echo, config RouteConfig, dist fs.
 	apiGroup.POST("/jobs", handler.HandleNewJob)
 	apiGroup.GET("/jobs", handler.HandleGetJobs)
 	apiGroup.GET("/archives", handler.HandleGetArchives)
+	apiGroup.GET("/archives/tags", handler.HandleGetArchiveTags)
 	apiGroup.DELETE("/archives/:archiveId", handler.HandleDeleteArchive)
 	apiGroup.PUT("/archives/:archiveId", handler.HandleModifyArchiveMetadata)
 

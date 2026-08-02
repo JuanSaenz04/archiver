@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,11 +104,13 @@ func TestHandleGetArchives(t *testing.T) {
 	if assert.NoError(t, handler.HandleGetArchives(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var response map[string][]models.Archive
+		var response struct {
+			Archives []models.Archive `json:"archives"`
+		}
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		archives := response["archives"]
+		archives := response.Archives
 		assert.Len(t, archives, 2)
 
 		names := make([]string, 0, len(archives))
@@ -123,6 +126,95 @@ func TestHandleGetArchives(t *testing.T) {
 		assert.Equal(t, int64(1536), byName["archive1.wacz"].SizeBytes)
 		assert.Equal(t, int64(3072), byName["archive2.wacz"].SizeBytes)
 	}
+}
+
+func TestHandleGetArchivesPaginatesFilteredResults(t *testing.T) {
+	archiveStore, _ := openArchiveStore(t)
+	handler := &Handler{archiveStore: archiveStore}
+	e := echo.New()
+	createdAt := time.Date(2026, 4, 2, 10, 0, 0, 0, time.UTC)
+	for _, archive := range []models.Archive{
+		{ID: uuid.New(), Name: "older match", Filename: "older.wacz", Tags: []string{"go", "news"}, CreatedAt: createdAt},
+		{ID: uuid.New(), Name: "newer match", Filename: "newer.wacz", Tags: []string{"go", "news", "web"}, CreatedAt: createdAt.Add(time.Hour)},
+		{ID: uuid.New(), Name: "partial match", Filename: "partial.wacz", Tags: []string{"go"}, CreatedAt: createdAt.Add(2 * time.Hour)},
+	} {
+		insertArchiveFixture(t, archiveStore, archive)
+	}
+
+	first := getArchivesResponse(t, e, handler, "/api/archives?limit=1&tag=go&tag=news")
+	if assert.Len(t, first.Archives, 1) {
+		assert.Equal(t, "newer match", first.Archives[0].Name)
+	}
+	assert.NotEmpty(t, first.NextCursor)
+
+	second := getArchivesResponse(t, e, handler, "/api/archives?limit=1&tag=go&tag=news&cursor="+url.QueryEscape(first.NextCursor))
+	if assert.Len(t, second.Archives, 1) {
+		assert.Equal(t, "older match", second.Archives[0].Name)
+	}
+	assert.Empty(t, second.NextCursor)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/archives?cursor=invalid", nil)
+	rec := httptest.NewRecorder()
+	assert.NoError(t, handler.HandleGetArchives(e.NewContext(req, rec)))
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandleGetArchivesRangeIsUnpaginated(t *testing.T) {
+	archiveStore, _ := openArchiveStore(t)
+	handler := &Handler{archiveStore: archiveStore}
+	e := echo.New()
+	start := time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)
+	for i := range 31 {
+		insertArchiveFixture(t, archiveStore, models.Archive{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("archive-%d", i),
+			Filename:  fmt.Sprintf("archive-%d.wacz", i),
+			CreatedAt: start.Add(time.Duration(i) * time.Minute),
+		})
+	}
+
+	target := "/api/archives?from=" + url.QueryEscape(start.Format(time.RFC3339)) +
+		"&to=" + url.QueryEscape(start.Add(time.Hour).Format(time.RFC3339))
+	response := getArchivesResponse(t, e, handler, target)
+	assert.Len(t, response.Archives, 31)
+	assert.Empty(t, response.NextCursor)
+}
+
+func TestHandleGetArchiveTags(t *testing.T) {
+	archiveStore, _ := openArchiveStore(t)
+	handler := &Handler{archiveStore: archiveStore}
+	e := echo.New()
+	insertArchiveFixture(t, archiveStore, models.Archive{
+		ID: uuid.New(), Name: "tagged", Filename: "tagged.wacz", Tags: []string{"news", "go"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/archives/tags", nil)
+	rec := httptest.NewRecorder()
+	assert.NoError(t, handler.HandleGetArchiveTags(e.NewContext(req, rec)))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	var response struct {
+		Tags []string `json:"tags"`
+	}
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	assert.Equal(t, []string{"go", "news"}, response.Tags)
+}
+
+type archiveListResponse struct {
+	Archives   []models.Archive `json:"archives"`
+	NextCursor string           `json:"next_cursor"`
+}
+
+func getArchivesResponse(t *testing.T, e *echo.Echo, handler *Handler, target string) archiveListResponse {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	rec := httptest.NewRecorder()
+	if !assert.NoError(t, handler.HandleGetArchives(e.NewContext(req, rec))) {
+		return archiveListResponse{}
+	}
+	assert.Equal(t, http.StatusOK, rec.Code)
+	var response archiveListResponse
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	return response
 }
 
 func TestHandleGetArchivesIncludesSizeBytesFromStoredArchiveMetadata(t *testing.T) {
@@ -162,11 +254,13 @@ func TestHandleGetArchivesIncludesSizeBytesFromStoredArchiveMetadata(t *testing.
 	if assert.NoError(t, handler.HandleGetArchives(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var response map[string][]models.Archive
+		var response struct {
+			Archives []models.Archive `json:"archives"`
+		}
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		archives := response["archives"]
+		archives := response.Archives
 		assert.Len(t, archives, 1)
 		assert.Equal(t, "seeded.wacz", archives[0].Name)
 		assert.Equal(t, int64(8192), archives[0].SizeBytes)

@@ -18,6 +18,25 @@ import (
 var ErrArchiveNotFound = errors.New("archive not found")
 var ErrArchiveFilenameConflict = errors.New("archive filename conflict")
 
+type ArchiveCursor struct {
+	CreatedAt time.Time
+	ID        uuid.UUID
+}
+
+type ListArchivesOptions struct {
+	Limit         int
+	Cursor        *ArchiveCursor
+	Tags          []string
+	Search        string
+	CreatedFrom   *time.Time
+	CreatedBefore *time.Time
+}
+
+type ArchivePage struct {
+	Archives   []models.Archive
+	NextCursor *ArchiveCursor
+}
+
 func (s *ArchiveStore) SyncFromDisk(ctx context.Context, archivesDir string) error {
 	files, err := os.ReadDir(archivesDir)
 	if err != nil {
@@ -71,18 +90,76 @@ VALUES (?, ?, ?, '', '', ?, ?);
 }
 
 func (s *ArchiveStore) List(ctx context.Context) ([]models.Archive, error) {
-	const query = `
+	page, err := s.ListArchives(ctx, ListArchivesOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return page.Archives, nil
+}
+
+func (s *ArchiveStore) ListArchives(ctx context.Context, options ListArchivesOptions) (ArchivePage, error) {
+	var where []string
+	var args []any
+
+	if options.CreatedFrom != nil {
+		where = append(where, "a.created_at >= ?")
+		args = append(args, *options.CreatedFrom)
+	}
+	if options.CreatedBefore != nil {
+		where = append(where, "a.created_at < ?")
+		args = append(args, *options.CreatedBefore)
+	}
+	if options.Cursor != nil {
+		where = append(where, "(a.created_at < ? OR (a.created_at = ? AND a.id < ?))")
+		args = append(args, options.Cursor.CreatedAt, options.Cursor.CreatedAt, options.Cursor.ID)
+	}
+	if len(options.Tags) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(options.Tags)), ",")
+		where = append(where, `a.id IN (
+			SELECT archive_id FROM tags
+			WHERE tag IN (`+placeholders+`)
+			GROUP BY archive_id
+			HAVING COUNT(DISTINCT tag) = ?
+		)`)
+		for _, tag := range options.Tags {
+			args = append(args, tag)
+		}
+		args = append(args, len(options.Tags))
+	}
+	if options.Search != "" {
+		where = append(where, `a.rowid IN (
+			SELECT rowid FROM archive_search
+			WHERE archive_search MATCH ?
+		)`)
+		args = append(args, archiveSearchQuery(options.Search))
+	}
+
+	query := `
+WITH filtered_archives AS (
+	SELECT a.id, a.name, a.filename, a.description, a.source_url, a.created_at, a.size_bytes
+	FROM archives a`
+	if len(where) > 0 {
+		query += "\n\tWHERE " + strings.Join(where, " AND ")
+	}
+	query += "\n\tORDER BY a.created_at DESC, a.id DESC"
+	if options.Limit > 0 {
+		query += "\n\tLIMIT ?"
+		args = append(args, options.Limit+1)
+	}
+	query += `
+)
 SELECT a.id, a.name, a.filename, a.description, a.source_url, a.created_at, a.size_bytes, t.tag
-FROM archives a
-LEFT JOIN tags t ON t.archive_id = a.id;
+FROM filtered_archives a
+LEFT JOIN tags t ON t.archive_id = a.id
+ORDER BY a.created_at DESC, a.id DESC, t.tag ASC;
 `
 
 	archiveIndexByID := make(map[uuid.UUID]int)
 	archives := make([]models.Archive, 0)
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return ArchivePage{}, err
 	}
 	defer rows.Close()
 
@@ -96,7 +173,7 @@ LEFT JOIN tags t ON t.archive_id = a.id;
 		)
 
 		if err := rows.Scan(&id, &name, &filename, &description, &sourceURL, &createdAt, &sizeBytes, &tag); err != nil {
-			return nil, err
+			return ArchivePage{}, err
 		}
 
 		if index, ok := archiveIndexByID[id]; ok {
@@ -124,10 +201,39 @@ LEFT JOIN tags t ON t.archive_id = a.id;
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return ArchivePage{}, err
 	}
 
-	return archives, nil
+	page := ArchivePage{Archives: archives}
+	if options.Limit > 0 && len(archives) > options.Limit {
+		page.Archives = archives[:options.Limit]
+		last := page.Archives[len(page.Archives)-1]
+		page.NextCursor = &ArchiveCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+
+	return page, nil
+}
+
+func (s *ArchiveStore) ListTags(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT tag FROM tags ORDER BY tag;")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tags := make([]string, 0)
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
+}
+
+func archiveSearchQuery(value string) string {
+	return `"` + strings.ReplaceAll(strings.TrimSpace(value), `"`, `""`) + `" *`
 }
 
 func (s *ArchiveStore) Insert(ctx context.Context, a models.Archive) error {

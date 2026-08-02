@@ -15,7 +15,6 @@ import {
 	hostname,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { paddedArchiveRange } from "@/lib/timeline";
 import { gsap, useGSAP } from "@/lib/motion";
 interface Props {
 	archives: Archive[];
@@ -37,22 +36,16 @@ export function ArchiveTimeline({
 	const previousPositions = useRef(new Map<string, string>());
 	const previousVisibility = useRef(new Map<string, boolean>());
 	const previousRange = useRef({ start: rangeStart, end: rangeEnd });
-	const presets: [string, number | "all"][] = [
+	const presets: [string, number][] = [
 		["7 days", 7],
 		["30 days", 30],
 		["1 year", 365],
-		["All", "all"],
 	];
-	const preset = (days: number | "all") => {
+	const preset = (days: number) => {
 		const end = new Date();
 		end.setHours(23, 59, 59, 999);
-		if (days === "all" && archives.length) {
-			const allRange = paddedArchiveRange(archives);
-			if (allRange) onRangeChange(allRange.start, allRange.end);
-			return;
-		}
 		const start = new Date(end);
-		start.setDate(start.getDate() - Number(days));
+		start.setDate(start.getDate() - days);
 		start.setHours(0, 0, 0, 0);
 		onRangeChange(start, end);
 	};
@@ -180,7 +173,7 @@ export function ArchiveTimeline({
 							className="mt-1 w-full"
 							value={dateInputValue(rangeEnd)}
 							onChange={(e) => {
-								const d = new Date(`${e.target.value}T23:59:59`);
+								const d = new Date(`${e.target.value}T23:59:59.999`);
 								if (!Number.isNaN(+d) && d >= rangeStart)
 									onRangeChange(rangeStart, d);
 							}}

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { PanelLeft } from "lucide-react";
 import { ArchiveLibrary } from "@/components/archive-library";
 import { ArchiveViewer } from "@/components/archive-viewer";
@@ -12,16 +12,42 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
-import { archivesQueryOptions } from "@/lib/queries";
+import {
+	archivePagesQueryOptions,
+	archiveTagsQueryOptions,
+} from "@/lib/queries";
 import { queryClient } from "@/lib/query-client";
 export const Route = createFileRoute("/")({
-	loader: () => queryClient.ensureQueryData(archivesQueryOptions),
+	loader: () =>
+		Promise.all([
+			queryClient.ensureInfiniteQueryData(
+				archivePagesQueryOptions({ search: "", tags: [] }),
+			),
+			queryClient.ensureQueryData(archiveTagsQueryOptions),
+		]),
 	component: Index,
 });
 function Index() {
-	const { data: archives = [], error, isFetching, refetch } = useQuery(
-		archivesQueryOptions,
+	const [query, setQuery] = useState("");
+	const [debouncedQuery, setDebouncedQuery] = useState("");
+	const [tags, setTags] = useState<string[]>([]);
+	useEffect(() => {
+		const timeout = window.setTimeout(() => setDebouncedQuery(query), 300);
+		return () => window.clearTimeout(timeout);
+	}, [query]);
+	const {
+		data,
+		error,
+		isFetching,
+		isFetchingNextPage,
+		fetchNextPage,
+		hasNextPage,
+		refetch,
+	} = useInfiniteQuery(
+		archivePagesQueryOptions({ search: debouncedQuery, tags }),
 	);
+	const { data: availableTags = [] } = useQuery(archiveTagsQueryOptions);
+	const archives = data?.pages.flatMap((page) => page.archives) ?? [];
 	const [selected, setSelected] = useState("");
 	const [drawer, setDrawer] = useState(false);
 	const refresh = async () => {
@@ -35,11 +61,19 @@ function Index() {
 	const library = (
 		<ArchiveLibrary
 			archives={archives}
+			availableTags={availableTags}
+			query={query}
+			onQueryChange={setQuery}
+			tags={tags}
+			onTagsChange={setTags}
 			selectedArchive={selectedArchive?.id ?? ""}
 			onSelect={choose}
 			loading={isFetching}
 			error={error?.message ?? null}
 			onRefresh={refresh}
+			hasMore={hasNextPage}
+			loadingMore={isFetchingNextPage}
+			onLoadMore={() => fetchNextPage()}
 		/>
 	);
 	return (

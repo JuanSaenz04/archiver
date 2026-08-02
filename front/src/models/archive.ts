@@ -10,5 +10,10 @@ export interface Archive {
 }
 
 export interface GetArchivesResponse {
-    archives: Archive[]
+	archives: Archive[];
+	next_cursor: string;
+}
+
+export interface GetArchiveTagsResponse {
+	tags: string[];
 }
