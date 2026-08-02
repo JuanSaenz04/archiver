@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -125,10 +124,6 @@ func (handler *Handler) HandleModifyArchiveMetadata(c *echo.Context) error {
 
 	err = handler.archiveStore.UpdateMetadata(c.Request().Context(), archiveId, newArchive.Name, newArchive.Description, newArchive.Tags)
 	if err != nil {
-		if errors.Is(err, store.ErrArchiveNameConflict) {
-			return respondWithError(http.StatusConflict, fmt.Sprintf("Archive with name %s already exists", newArchive.Name), c)
-		}
-
 		if errors.Is(err, store.ErrArchiveNotFound) {
 			return respondWithError(http.StatusNotFound, errArchiveNotFound, c)
 		}

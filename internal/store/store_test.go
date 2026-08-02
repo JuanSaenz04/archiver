@@ -122,7 +122,7 @@ func TestInsertAndList(t *testing.T) {
 	}
 }
 
-func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
+func TestInsertAllowsDuplicateNames(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	createdAt := time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)
@@ -140,7 +140,7 @@ func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
 		t.Fatalf("insert first archive: %v", err)
 	}
 
-	err := s.Insert(ctx, models.Archive{
+	if err := s.Insert(ctx, models.Archive{
 		ID:          uuid.New(),
 		Name:        "Duplicate Title",
 		Filename:    "dup-two.wacz",
@@ -149,10 +149,30 @@ func TestInsertReturnsNameConflictOnDuplicateName(t *testing.T) {
 		Tags:        []string{"b"},
 		CreatedAt:   createdAt.Add(time.Minute),
 		SizeBytes:   256,
-	})
+	}); err != nil {
+		t.Fatalf("insert archive with duplicate name: %v", err)
+	}
 
-	if !errors.Is(err, ErrArchiveNameConflict) {
-		t.Fatalf("expected ErrArchiveNameConflict, got %v", err)
+	var count int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE name = ?;", "Duplicate Title").Scan(&count); err != nil {
+		t.Fatalf("count duplicate names: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 archives with duplicate name, got %d", count)
+	}
+}
+
+func TestInsertReturnsFilenameConflict(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if err := s.Insert(ctx, models.Archive{ID: uuid.New(), Name: "First", Filename: "same.wacz"}); err != nil {
+		t.Fatalf("insert first archive: %v", err)
+	}
+
+	err := s.Insert(ctx, models.Archive{ID: uuid.New(), Name: "Second", Filename: "same.wacz"})
+	if !errors.Is(err, ErrArchiveFilenameConflict) {
+		t.Fatalf("expected ErrArchiveFilenameConflict, got %v", err)
 	}
 }
 
@@ -490,7 +510,7 @@ func TestUpdateMetadata(t *testing.T) {
 		}
 	})
 
-	t.Run("conflict_returns_name_conflict", func(t *testing.T) {
+	t.Run("duplicate_name_is_allowed", func(t *testing.T) {
 		if err := s.Insert(ctx, models.Archive{
 			ID:          uuid.New(),
 			Name:        "Other Title",
@@ -503,9 +523,16 @@ func TestUpdateMetadata(t *testing.T) {
 			t.Fatalf("insert other archive: %v", err)
 		}
 
-		err := s.UpdateMetadata(ctx, archiveID, "Other Title", "should fail", []string{"x"})
-		if !errors.Is(err, ErrArchiveNameConflict) {
-			t.Fatalf("expected ErrArchiveNameConflict, got %v", err)
+		if err := s.UpdateMetadata(ctx, archiveID, "Other Title", "updated", []string{"x"}); err != nil {
+			t.Fatalf("update metadata to duplicate name: %v", err)
+		}
+
+		var count int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM archives WHERE name = ?;", "Other Title").Scan(&count); err != nil {
+			t.Fatalf("count duplicate names: %v", err)
+		}
+		if count != 2 {
+			t.Fatalf("expected 2 archives with duplicate name, got %d", count)
 		}
 	})
 
@@ -634,6 +661,134 @@ func TestRunMigrationsAddsFilenameAndBackfillsExistingRows(t *testing.T) {
 	}
 	if filename != "legacy-name.wacz" {
 		t.Fatalf("expected migration to backfill filename from legacy name, got %q", filename)
+	}
+}
+
+func TestRunMigrationsAllowsDuplicateNamesWithoutLosingData(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "archiver.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+
+	for version := 1; version <= 4; version++ {
+		if _, err := db.Exec(migrationSQL(t, version)); err != nil {
+			t.Fatalf("apply migration v%d fixture: %v", version, err)
+		}
+	}
+	if _, err := db.Exec("PRAGMA user_version = 4;"); err != nil {
+		t.Fatalf("set v4 user_version fixture: %v", err)
+	}
+
+	first := models.Archive{
+		ID:          uuid.New(),
+		Name:        "First Archive",
+		Filename:    "first archive.wacz",
+		Description: "first description",
+		SourceURL:   "https://first.example",
+		Tags:        []string{"news", "saved"},
+		CreatedAt:   time.Date(2025, 4, 3, 2, 1, 0, 0, time.UTC),
+		SizeBytes:   1234,
+	}
+	second := models.Archive{
+		ID:          uuid.New(),
+		Name:        "Second 世界",
+		Filename:    "second.wacz",
+		Description: "second description",
+		SourceURL:   "https://second.example",
+		Tags:        []string{},
+		CreatedAt:   time.Date(2026, 5, 4, 3, 2, 1, 0, time.UTC),
+		SizeBytes:   5678,
+	}
+
+	for _, archive := range []models.Archive{first, second} {
+		if _, err := db.Exec(
+			"INSERT INTO archives (id, name, filename, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?);",
+			archive.ID, archive.Name, archive.Filename, archive.Description, archive.SourceURL, archive.CreatedAt, archive.SizeBytes,
+		); err != nil {
+			t.Fatalf("insert archive fixture: %v", err)
+		}
+		for _, tag := range archive.Tags {
+			if _, err := db.Exec("INSERT INTO tags (archive_id, tag) VALUES (?, ?);", archive.ID, tag); err != nil {
+				t.Fatalf("insert tag fixture: %v", err)
+			}
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close fixture db: %v", err)
+	}
+
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if err := s.RunMigrations(); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("close migrated store: %v", err)
+	}
+
+	s, err = Open(dbPath)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	defer s.Close()
+
+	archives, err := s.List(context.Background())
+	if err != nil {
+		t.Fatalf("list migrated archives: %v", err)
+	}
+	if len(archives) != 2 {
+		t.Fatalf("expected 2 migrated archives, got %d", len(archives))
+	}
+
+	byID := make(map[uuid.UUID]models.Archive, len(archives))
+	for _, archive := range archives {
+		byID[archive.ID] = archive
+	}
+	for _, want := range []models.Archive{first, second} {
+		got, ok := byID[want.ID]
+		if !ok {
+			t.Fatalf("missing migrated archive %s", want.ID)
+		}
+		if got.Name != want.Name || got.Filename != want.Filename || got.Description != want.Description || got.SourceURL != want.SourceURL || !got.CreatedAt.Equal(want.CreatedAt) || got.SizeBytes != want.SizeBytes {
+			t.Fatalf("migrated archive differs: got %#v, want %#v", got, want)
+		}
+		if len(got.Tags) != len(want.Tags) {
+			t.Fatalf("archive %s tags differ: got %v, want %v", want.ID, got.Tags, want.Tags)
+		}
+		for _, tag := range want.Tags {
+			found := false
+			for _, gotTag := range got.Tags {
+				found = found || gotTag == tag
+			}
+			if !found {
+				t.Fatalf("archive %s missing tag %q", want.ID, tag)
+			}
+		}
+	}
+
+	duplicateName := models.Archive{ID: uuid.New(), Name: first.Name, Filename: "third.wacz"}
+	if err := s.Insert(context.Background(), duplicateName); err != nil {
+		t.Fatalf("insert duplicate name after migration: %v", err)
+	}
+	if err := s.Insert(context.Background(), models.Archive{ID: uuid.New(), Name: "Unique", Filename: first.Filename}); !errors.Is(err, ErrArchiveFilenameConflict) {
+		t.Fatalf("expected filename conflict after migration, got %v", err)
+	}
+
+	if err := s.Delete(context.Background(), first.ID); err != nil {
+		t.Fatalf("delete migrated archive: %v", err)
+	}
+	var tagCount int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM tags WHERE archive_id = ?;", first.ID).Scan(&tagCount); err != nil {
+		t.Fatalf("count tags after cascade: %v", err)
+	}
+	if tagCount != 0 {
+		t.Fatalf("expected cascade delete to remove tags, got %d", tagCount)
+	}
+	if _, err := s.db.Exec("INSERT INTO tags (archive_id, tag) VALUES (?, ?);", uuid.New(), "orphan"); err == nil {
+		t.Fatal("expected foreign key to reject orphaned tag")
 	}
 }
 

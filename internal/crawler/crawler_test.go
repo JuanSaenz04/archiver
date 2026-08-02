@@ -155,7 +155,7 @@ func TestCrawlerRun_CrawlCommandFailure(t *testing.T) {
 	assert.Empty(t, records)
 }
 
-func TestCrawlerRun_StoreInsertFailureCleanup(t *testing.T) {
+func TestCrawlerRun_DuplicateNamePreservesExistingArchive(t *testing.T) {
 	archiveStore := newTestStore(t)
 	crawler := NewCrawler(30, archiveStore)
 
@@ -165,12 +165,14 @@ func TestCrawlerRun_StoreInsertFailureCleanup(t *testing.T) {
 
 	t.Setenv("ARCHIVES_DIR", archivesDir)
 	crawler.collectionsDir = collectionsDir
+	if err := os.MkdirAll(archivesDir, 0755); err != nil {
+		t.Fatalf("create archives directory: %v", err)
+	}
 
-	// Pre-insert an archive with the same name to cause a unique key constraint violation on name
 	existingArchive := models.Archive{
 		ID:          uuid.New(),
 		Name:        "Duplicate Name",
-		Filename:    "existing.wacz",
+		Filename:    "Duplicate-Name.wacz",
 		Description: "some description",
 		SourceURL:   "https://example.com/original",
 	}
@@ -178,11 +180,13 @@ func TestCrawlerRun_StoreInsertFailureCleanup(t *testing.T) {
 	ctx := context.Background()
 	err := archiveStore.Insert(ctx, existingArchive)
 	assert.NoError(t, err)
+	existingPath := filepath.Join(archivesDir, existingArchive.Filename)
+	assert.NoError(t, os.WriteFile(existingPath, []byte("original archive"), 0644))
 
 	jobID := uuid.New().String()
 	archive := models.Archive{
 		ID:        uuid.MustParse(jobID),
-		Name:      "Duplicate Name", // Same name as existingArchive
+		Name:      "Duplicate Name",
 		SourceURL: "https://example.com/duplicate",
 	}
 
@@ -194,18 +198,25 @@ func TestCrawlerRun_StoreInsertFailureCleanup(t *testing.T) {
 		return os.WriteFile(srcPath, []byte("some wacz content"), 0644)
 	}
 
-	err = crawler.Run(ctx, jobID, archive, models.CrawlOptions{})
-	// Expect database insert to fail (UNIQUE constraint failed: archives.name)
-	assert.Error(t, err)
+	assert.NoError(t, crawler.Run(ctx, jobID, archive, models.CrawlOptions{}))
 
-	// Ensure the copied destination file was deleted/rolled back on database error
-	expectedFilename := "duplicate-name.wacz"
-	dstPath := filepath.Join(archivesDir, expectedFilename)
-	assert.NoFileExists(t, dstPath, "copied archive should be cleaned up on database insert failure")
+	existingBytes, err := os.ReadFile(existingPath)
+	assert.NoError(t, err)
+	assert.Equal(t, "original archive", string(existingBytes))
 
-	// Verify only the original archive exists in database
+	newPath := filepath.Join(archivesDir, "Duplicate-Name-1.wacz")
+	newBytes, err := os.ReadFile(newPath)
+	assert.NoError(t, err)
+	assert.Equal(t, "some wacz content", string(newBytes))
+
 	records, err := archiveStore.List(ctx)
 	assert.NoError(t, err)
-	assert.Len(t, records, 1)
-	assert.Equal(t, existingArchive.ID, records[0].ID)
+	assert.Len(t, records, 2)
+
+	filenames := make(map[uuid.UUID]string, len(records))
+	for _, record := range records {
+		filenames[record.ID] = record.Filename
+	}
+	assert.Equal(t, "Duplicate-Name.wacz", filenames[existingArchive.ID])
+	assert.Equal(t, "Duplicate-Name-1.wacz", filenames[archive.ID])
 }
