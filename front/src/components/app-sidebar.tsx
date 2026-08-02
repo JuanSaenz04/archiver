@@ -81,7 +81,6 @@ export function AppSidebar({
     if (selectedArchive === archiveId) {
       onArchiveSelected("");
     }
-    void onRefresh();
   };
 
   const handleArchiveUpdated = (updatedArchive: Archive) => {
@@ -89,7 +88,6 @@ export function AppSidebar({
       setDetailArchive(updatedArchive);
     }
 
-    void onRefresh();
   };
 
   const toggleTag = (tag: string) => {

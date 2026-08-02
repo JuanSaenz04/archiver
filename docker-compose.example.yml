@@ -23,8 +23,11 @@ services:
     environment:
       ARCHIVES_DIR: "/archives"
       REDIS_URL: "redis://:${REDIS_PASS}@broker:6379/0"
+      APP_PUBLIC_URL: "${APP_PUBLIC_URL}"
+      REPLAY_PUBLIC_URL: "${REPLAY_PUBLIC_URL}"
     volumes:
       - "./archives:/archives"
     restart: unless-stopped
     ports:
       - "${APP_PORT}:1080"
+      - "${REPLAY_PORT}:1081"

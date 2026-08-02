@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -232,6 +233,18 @@ func TestHandleGetArchive(t *testing.T) {
 		if assert.NoError(t, handler.HandleGetArchive(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			assert.Equal(t, content, rec.Body.Bytes())
+		}
+
+		rangeReq := httptest.NewRequest(http.MethodGet, "/archives/"+archiveID.String(), nil)
+		rangeReq.Header.Set("Range", "bytes=0-4")
+		rangeRec := httptest.NewRecorder()
+		rangeContext := e.NewContext(rangeReq, rangeRec)
+		rangeContext.SetPathValues([]echo.PathValue{{Name: "archiveId", Value: archiveID.String()}})
+
+		if assert.NoError(t, handler.HandleGetArchive(rangeContext)) {
+			assert.Equal(t, http.StatusPartialContent, rangeRec.Code)
+			assert.Equal(t, content[:5], rangeRec.Body.Bytes())
+			assert.Equal(t, fmt.Sprintf("bytes 0-4/%d", len(content)), rangeRec.Header().Get("Content-Range"))
 		}
 	})
 
