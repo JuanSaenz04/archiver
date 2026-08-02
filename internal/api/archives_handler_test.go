@@ -562,7 +562,7 @@ func TestHandleModifyArchiveMetadata(t *testing.T) {
 		}
 	})
 
-	t.Run("ConflictByExistingName", func(t *testing.T) {
+	t.Run("AllowsExistingName", func(t *testing.T) {
 		tempDir := t.TempDir()
 		archiveStore, _ := openArchiveStore(t)
 		archiveID := uuid.New()
@@ -593,7 +593,7 @@ func TestHandleModifyArchiveMetadata(t *testing.T) {
 
 		handler := &Handler{archivesDir: tempDir, archiveStore: archiveStore}
 		e := echo.New()
-		body, _ := json.Marshal(map[string]any{"name": "Existing Title", "description": "should fail", "tags": []string{"x"}})
+		body, _ := json.Marshal(map[string]any{"name": "Existing Title", "description": "updated", "tags": []string{"x"}})
 		req := httptest.NewRequest(http.MethodPut, "/api/archives/"+archiveID.String(), strings.NewReader(string(body)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
@@ -601,19 +601,13 @@ func TestHandleModifyArchiveMetadata(t *testing.T) {
 		c.SetPathValues([]echo.PathValue{{Name: "archiveId", Value: archiveID.String()}})
 
 		if assert.NoError(t, handler.HandleModifyArchiveMetadata(c)) {
-			assert.Equal(t, http.StatusConflict, rec.Code)
+			assert.Equal(t, http.StatusNoContent, rec.Code)
 
 			_, err := os.Stat(filePath)
-			assert.NoError(t, err, "metadata conflict should not affect the physical file")
-			assert.Equal(t, 1, countArchiveByName(t, archiveStore, "Source Title"))
+			assert.NoError(t, err)
+			assert.Equal(t, 2, countArchiveByName(t, archiveStore, "Existing Title"))
 		}
 	})
-}
-
-func TestArchiveStoreNameConflictTypeIsMatched(t *testing.T) {
-	err := store.ErrArchiveNameConflict
-	assert.True(t, errors.Is(err, store.ErrArchiveNameConflict))
-	assert.False(t, errors.Is(err, sql.ErrNoRows))
 }
 
 func openArchiveDBWithFilenameColumn(t *testing.T, dbPath string) *sql.DB {

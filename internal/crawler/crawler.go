@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/JuanSaenz04/archiver/internal/archiveutil"
 	"github.com/JuanSaenz04/archiver/internal/models"
@@ -85,39 +87,41 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	if !ok {
 		filename = jobID + ".wacz"
 	}
-	archive.Filename = filename
-	dstPath := filepath.Join(archivesDir, filename)
-
 	src, err := os.Open(srcPath)
 	if err != nil {
 		return fmt.Errorf("failed to open source wacz: %w", err)
 	}
 	defer src.Close()
 
-	dst, err := os.Create(dstPath)
+	dst, filename, err := createArchiveFile(archivesDir, filename)
 	if err != nil {
 		return fmt.Errorf("failed to create destination wacz: %w", err)
 	}
-	defer dst.Close()
+	dstPath := dst.Name()
+	keepFile := false
+	defer func() {
+		_ = dst.Close()
+		if !keepFile {
+			_ = os.Remove(dstPath)
+		}
+	}()
 
-	if _, err := io.Copy(dst, src); err != nil {
+	size, err := io.Copy(dst, src)
+	if err != nil {
 		return fmt.Errorf("failed to copy wacz: %w", err)
 	}
-
-	fileInfo, err := dst.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to check wacz size: %w", err)
+	if err := dst.Close(); err != nil {
+		return fmt.Errorf("failed to close destination wacz: %w", err)
 	}
 
-	archive.SizeBytes = fileInfo.Size()
+	archive.Filename = filename
+	archive.SizeBytes = size
 
 	err = crawler.archiveStore.Insert(ctx, archive)
 	if err != nil {
-		if removeErr := os.Remove(dstPath); removeErr != nil {
-			slog.Warn("failed to remove archive after store insert error", "job_id", jobID, "archive_name", archive.Name, "path", dstPath, "error", removeErr)
-		}
 		return err
 	}
+	keepFile = true
 
 	slog.Info("archive persisted",
 		"job_id", jobID,
@@ -127,6 +131,24 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	)
 
 	return nil
+}
+
+func createArchiveFile(dir, filename string) (*os.File, string, error) {
+	ext := filepath.Ext(filename)
+	name := strings.TrimSuffix(filename, ext)
+
+	for suffix := 0; ; suffix++ {
+		candidate := filename
+		if suffix > 0 {
+			candidate = fmt.Sprintf("%s-%d%s", name, suffix, ext)
+		}
+
+		file, err := os.OpenFile(filepath.Join(dir, candidate), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		return file, candidate, err
+	}
 }
 
 func setDefaultValuesIfEmpty(options *models.CrawlOptions) {

@@ -16,7 +16,7 @@ import (
 )
 
 var ErrArchiveNotFound = errors.New("archive not found")
-var ErrArchiveNameConflict = errors.New("archive name conflict")
+var ErrArchiveFilenameConflict = errors.New("archive filename conflict")
 
 func (s *ArchiveStore) SyncFromDisk(ctx context.Context, archivesDir string) error {
 	files, err := os.ReadDir(archivesDir)
@@ -150,7 +150,7 @@ INSERT INTO archives (id, name, filename, description, source_url, size_bytes) V
 
 	if _, err := tx.ExecContext(ctx, archiveQuery, archiveArgs...); err != nil {
 		if isUniqueConstraint(err) {
-			return ErrArchiveNameConflict
+			return ErrArchiveFilenameConflict
 		} else {
 			return err
 		}
@@ -182,10 +182,6 @@ WHERE id = ?;
 		`
 
 	if res, err := tx.ExecContext(ctx, renameQuery, newName, archiveId); err != nil {
-		if isUniqueConstraint(err) {
-			return ErrArchiveNameConflict
-		}
-
 		return err
 	} else {
 		n, _ := res.RowsAffected()
