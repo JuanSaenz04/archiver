@@ -6,15 +6,22 @@ import { ArchiveViewer } from "@/components/archive-viewer";
 import { ArchiveTimeline } from "@/components/archive-timeline";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { paddedArchiveRange } from "@/lib/timeline";
-import { archivesQueryOptions } from "@/lib/queries";
-import { queryClient } from "@/lib/query-client";
+import { timelineArchivesQueryOptions } from "@/lib/queries";
 export const Route = createFileRoute("/timeline")({
-	loader: () => queryClient.ensureQueryData(archivesQueryOptions),
 	component: Timeline,
 });
 function Timeline() {
-	const { data = [], error } = useQuery(archivesQueryOptions);
+	const [range, setRange] = useState(() => {
+		const end = new Date();
+		end.setHours(23, 59, 59, 999);
+		const start = new Date(end);
+		start.setDate(start.getDate() - 7);
+		start.setHours(0, 0, 0, 0);
+		return { start, end };
+	});
+	const { data = [], error } = useQuery(
+		timelineArchivesQueryOptions(range.start, range.end),
+	);
 	const archives = useMemo(
 		() =>
 			[...data].sort(
@@ -25,7 +32,6 @@ function Timeline() {
 	const [query, setQuery] = useState("");
 	const [submitted, setSubmitted] = useState("");
 	const [selected, setSelected] = useState("");
-	const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
 	const matches = useMemo(
 		() =>
 			archives.filter(
@@ -35,13 +41,6 @@ function Timeline() {
 			),
 		[archives, submitted],
 	);
-	const fallback = useMemo(() => {
-		const end = new Date();
-		const start = new Date(end);
-		start.setDate(end.getDate() - 7);
-		return paddedArchiveRange(matches) ?? { start, end };
-	}, [matches]);
-	const active = range ?? fallback;
 	return (
 		<div className="flex h-full min-h-0 flex-col overflow-y-auto">
 			<div className="mx-auto w-full max-w-6xl p-(--content-gutter)">
@@ -56,7 +55,6 @@ function Timeline() {
 					onSubmit={(e) => {
 						e.preventDefault();
 						setSubmitted(query);
-						setRange(null);
 					}}
 				>
 					<Input
@@ -86,8 +84,8 @@ function Timeline() {
 				<ArchiveTimeline
 					archives={matches}
 					selectedArchive={selected}
-					rangeStart={active.start}
-					rangeEnd={active.end}
+					rangeStart={range.start}
+					rangeEnd={range.end}
 					onSelect={setSelected}
 					onRangeChange={(start, end) => setRange({ start, end })}
 				/>

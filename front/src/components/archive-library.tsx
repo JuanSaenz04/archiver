@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
 	FileArchive,
@@ -24,50 +24,60 @@ import { gsap, useGSAP } from "@/lib/motion";
 
 interface Props {
 	archives: Archive[];
+	availableTags: string[];
+	query: string;
+	onQueryChange: (query: string) => void;
+	tags: string[];
+	onTagsChange: (tags: string[]) => void;
 	selectedArchive: string;
 	onSelect: (id: string) => void;
 	loading: boolean;
 	error: string | null;
 	onRefresh: () => Promise<void>;
+	hasMore: boolean;
+	loadingMore: boolean;
+	onLoadMore: () => Promise<unknown>;
 }
 export function ArchiveLibrary({
 	archives,
+	availableTags,
+	query,
+	onQueryChange,
+	tags,
+	onTagsChange,
 	selectedArchive,
 	onSelect,
 	loading,
 	error,
 	onRefresh,
+	hasMore,
+	loadingMore,
+	onLoadMore,
 }: Props) {
 	const libraryRef = useRef<HTMLElement>(null);
-	const [query, setQuery] = useState("");
-	const [tags, setTags] = useState<string[]>([]);
+	const scrollRef = useRef<HTMLDivElement>(null);
+	const loadMoreRef = useRef<HTMLDivElement>(null);
 	const [details, setDetails] = useState<Archive | null>(null);
-	const allTags = useMemo(
-		() => [...new Set(archives.flatMap((a) => a.tags ?? []))].sort(),
-		[archives],
-	);
-	const filtered = useMemo(
-		() =>
-			archives.filter((a) => {
-				const q = query.toLowerCase();
-				return (
-					(!q ||
-						[a.name, a.description, a.source_url, ...(a.tags ?? [])].some((v) =>
-							v?.toLowerCase().includes(q),
-						)) &&
-					(!tags.length || tags.every((t) => a.tags?.includes(t)))
-				);
-			}),
-		[archives, query, tags],
-	);
 	const clear = () => {
-		setQuery("");
-		setTags([]);
+		onQueryChange("");
+		onTagsChange([]);
 	};
 	const update = (archive: Archive) => {
 		setDetails(archive);
 	};
-	const visibleArchiveKey = filtered.map((archive) => archive.id).join(",");
+	const visibleArchiveKey = archives.map((archive) => archive.id).join(",");
+	useEffect(() => {
+		const target = loadMoreRef.current;
+		if (!target || !hasMore) return;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0]?.isIntersecting && !loadingMore) void onLoadMore();
+			},
+			{ root: scrollRef.current, rootMargin: "160px" },
+		);
+		observer.observe(target);
+		return () => observer.disconnect();
+	}, [hasMore, loadingMore, onLoadMore]);
 	useGSAP(
 		() => {
 			const media = gsap.matchMedia();
@@ -96,7 +106,7 @@ export function ArchiveLibrary({
 					<div>
 						<h1 className="font-semibold">Archives</h1>
 						<p className="text-xs text-muted-foreground" aria-live="polite">
-							{filtered.length} of {archives.length} captures
+							{archives.length} captures loaded
 						</p>
 					</div>
 					<div className="flex">
@@ -117,7 +127,7 @@ export function ArchiveLibrary({
 						<Input
 							aria-label="Search archives"
 							value={query}
-							onChange={(e) => setQuery(e.target.value)}
+							onChange={(e) => onQueryChange(e.target.value)}
 							placeholder="Search captures"
 							className="h-10 pl-9"
 						/>
@@ -138,16 +148,16 @@ export function ArchiveLibrary({
 								Filter by tag
 							</p>
 							<div className="max-h-60 space-y-1 overflow-y-auto">
-								{allTags.map((tag) => (
+								{availableTags.map((tag) => (
 									<button
 										key={tag}
 										type="button"
 										aria-pressed={tags.includes(tag)}
 										onClick={() =>
-											setTags((p) =>
-												p.includes(tag)
-													? p.filter((x) => x !== tag)
-													: [...p, tag],
+											onTagsChange(
+												tags.includes(tag)
+													? tags.filter((value) => value !== tag)
+													: [...tags, tag],
 											)
 										}
 										className={cn(
@@ -160,7 +170,7 @@ export function ArchiveLibrary({
 										{tag}
 									</button>
 								))}
-								{!allTags.length && (
+								{!availableTags.length && (
 									<p className="py-3 text-center text-sm text-muted-foreground">
 										No tags yet
 									</p>
@@ -183,10 +193,14 @@ export function ArchiveLibrary({
 					</div>
 				)}
 			</div>
-			<div className="min-h-0 flex-1 overflow-y-auto p-2" aria-busy={loading}>
+			<div
+				ref={scrollRef}
+				className="min-h-0 flex-1 overflow-y-auto p-2"
+				aria-busy={loading}
+			>
 				{loading && !archives.length ? (
 					<LibrarySkeleton />
-				) : error ? (
+				) : error && !archives.length ? (
 					<State
 						title="Couldn’t refresh archives"
 						message={error}
@@ -196,9 +210,9 @@ export function ArchiveLibrary({
 							</Button>
 						}
 					/>
-				) : filtered.length ? (
+				) : archives.length ? (
 					<div className="space-y-1">
-						{filtered.map((a) => (
+						{archives.map((a) => (
 							<div key={a.id} data-archive-row className="group relative">
 								<button
 									type="button"
@@ -256,19 +270,29 @@ export function ArchiveLibrary({
 								</Button>
 							</div>
 						))}
+						<div ref={loadMoreRef} className="flex min-h-12 items-center justify-center">
+							{loadingMore && (
+								<span className="text-xs text-muted-foreground">Loading more…</span>
+							)}
+							{error && (
+								<Button size="sm" variant="ghost" onClick={() => void onLoadMore()}>
+									Try loading more
+								</Button>
+							)}
+						</div>
 					</div>
 				) : (
 					<State
 						title={
-							archives.length ? "No matching captures" : "Your archive is empty"
+							query || tags.length ? "No matching captures" : "Your archive is empty"
 						}
 						message={
-							archives.length
+							query || tags.length
 								? "Try clearing your search or tag filters."
 								: "Create an archive to begin building your collection."
 						}
 						action={
-							archives.length ? (
+							query || tags.length ? (
 								<Button size="sm" variant="outline" onClick={clear}>
 									Clear filters
 								</Button>

@@ -122,6 +122,129 @@ func TestInsertAndList(t *testing.T) {
 	}
 }
 
+func TestListArchivesPaginatesByCreatedAtAndID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	tiedAt := time.Date(2026, 4, 1, 11, 0, 0, 0, time.UTC)
+	archives := []models.Archive{
+		{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Name: "old", Filename: "old.wacz", CreatedAt: tiedAt.Add(-time.Hour)},
+		{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Name: "tie-low", Filename: "tie-low.wacz", CreatedAt: tiedAt, Tags: []string{"a", "b", "c"}},
+		{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Name: "tie-high", Filename: "tie-high.wacz", CreatedAt: tiedAt},
+		{ID: uuid.MustParse("00000000-0000-0000-0000-000000000004"), Name: "new", Filename: "new.wacz", CreatedAt: tiedAt.Add(time.Hour)},
+	}
+	for _, archive := range archives {
+		if err := s.Insert(ctx, archive); err != nil {
+			t.Fatalf("insert archive %q: %v", archive.Name, err)
+		}
+	}
+
+	first, err := s.ListArchives(ctx, ListArchivesOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("list first page: %v", err)
+	}
+	if got := archiveNames(first.Archives); !equalStrings(got, []string{"new", "tie-high"}) {
+		t.Fatalf("unexpected first page: %v", got)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("expected a next cursor")
+	}
+
+	second, err := s.ListArchives(ctx, ListArchivesOptions{Limit: 2, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatalf("list second page: %v", err)
+	}
+	if got := archiveNames(second.Archives); !equalStrings(got, []string{"tie-low", "old"}) {
+		t.Fatalf("unexpected second page: %v", got)
+	}
+	if second.NextCursor != nil {
+		t.Fatal("did not expect another cursor")
+	}
+	if len(second.Archives[0].Tags) != 3 {
+		t.Fatalf("expected all tags on paginated archive, got %v", second.Archives[0].Tags)
+	}
+}
+
+func TestListArchivesFiltersByAllTagsAndDateRange(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	fixtures := []models.Archive{
+		{ID: uuid.New(), Name: "both-in-range", Filename: "both.wacz", CreatedAt: start.Add(time.Hour), Tags: []string{"go", "news"}},
+		{ID: uuid.New(), Name: "one-tag", Filename: "one.wacz", CreatedAt: start.Add(2 * time.Hour), Tags: []string{"go"}},
+		{ID: uuid.New(), Name: "both-outside", Filename: "outside.wacz", CreatedAt: start.Add(25 * time.Hour), Tags: []string{"go", "news"}},
+	}
+	for _, archive := range fixtures {
+		if err := s.Insert(ctx, archive); err != nil {
+			t.Fatalf("insert archive %q: %v", archive.Name, err)
+		}
+	}
+	end := start.Add(24 * time.Hour)
+
+	page, err := s.ListArchives(ctx, ListArchivesOptions{
+		Tags:          []string{"go", "news"},
+		CreatedFrom:   &start,
+		CreatedBefore: &end,
+	})
+	if err != nil {
+		t.Fatalf("list filtered archives: %v", err)
+	}
+	if got := archiveNames(page.Archives); !equalStrings(got, []string{"both-in-range"}) {
+		t.Fatalf("unexpected filtered archives: %v", got)
+	}
+	searchResults, err := s.ListArchives(ctx, ListArchivesOptions{Search: "BOTH-IN"})
+	if err != nil {
+		t.Fatalf("search archives: %v", err)
+	}
+	if got := archiveNames(searchResults.Archives); !equalStrings(got, []string{"both-in-range"}) {
+		t.Fatalf("unexpected search results: %v", got)
+	}
+
+	tags, err := s.ListTags(ctx)
+	if err != nil {
+		t.Fatalf("list tags: %v", err)
+	}
+	if !equalStrings(tags, []string{"go", "news"}) {
+		t.Fatalf("unexpected tags: %v", tags)
+	}
+}
+
+func TestArchiveListIndexes(t *testing.T) {
+	s := newTestStore(t)
+	var count int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_archives_created_at_id';").Scan(&count); err != nil {
+		t.Fatalf("check pagination index: %v", err)
+	}
+	if count != 1 {
+		t.Fatal("expected pagination index")
+	}
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_tags_archive_id';").Scan(&count); err != nil {
+		t.Fatalf("check redundant tag index: %v", err)
+	}
+	if count != 0 {
+		t.Fatal("expected redundant tag index to be removed")
+	}
+}
+
+func archiveNames(archives []models.Archive) []string {
+	names := make([]string, len(archives))
+	for i, archive := range archives {
+		names[i] = archive.Name
+	}
+	return names
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestInsertAllowsDuplicateNames(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
