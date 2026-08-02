@@ -79,7 +79,7 @@ function CreateArchive() {
 					depth: Number(depth),
 				},
 			});
-			navigate({ to: "/" });
+			await navigate({ to: "/" });
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Unable to create archive job.",
@@ -100,7 +100,11 @@ function CreateArchive() {
 						Start with a target; fine-tune crawl limits only when you need them.
 					</p>
 				</header>
-				<form noValidate onSubmit={submit} className="space-y-7">
+				<form
+					noValidate
+					onSubmit={(event) => void submit(event)}
+					className="space-y-7"
+				>
 					<fieldset className="space-y-4">
 						<legend className="mb-3 text-lg font-semibold">Target</legend>
 						<Field label="Target URL" id="url" required>

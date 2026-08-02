@@ -316,7 +316,7 @@ export function ArchiveDetailsDialog({
 							<div className="flex items-center gap-2 w-full">
 								<Button
 									className="flex-1"
-									onClick={handleUpdate}
+									onClick={() => void handleUpdate()}
 									disabled={isLoading}
 								>
 									<Check className="mr-2 size-4" />
@@ -378,7 +378,7 @@ export function ArchiveDetailsDialog({
 						<AlertDialogAction
 							onClick={(e) => {
 								e.preventDefault();
-								handleDelete();
+								void handleDelete();
 							}}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 							disabled={isLoading}
