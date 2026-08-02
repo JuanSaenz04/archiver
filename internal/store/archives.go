@@ -127,12 +127,11 @@ func (s *ArchiveStore) ListArchives(ctx context.Context, options ListArchivesOpt
 		args = append(args, len(options.Tags))
 	}
 	if options.Search != "" {
-		pattern := "%" + escapeLike(options.Search) + "%"
-		where = append(where, `(a.name LIKE ? ESCAPE '\' OR a.description LIKE ? ESCAPE '\' OR a.source_url LIKE ? ESCAPE '\' OR EXISTS (
-			SELECT 1 FROM tags search_tags
-			WHERE search_tags.archive_id = a.id AND search_tags.tag LIKE ? ESCAPE '\'
-		))`)
-		args = append(args, pattern, pattern, pattern, pattern)
+		where = append(where, `a.rowid IN (
+			SELECT rowid FROM archive_search
+			WHERE archive_search MATCH ?
+		)`)
+		args = append(args, archiveSearchQuery(options.Search))
 	}
 
 	query := `
@@ -233,10 +232,8 @@ func (s *ArchiveStore) ListTags(ctx context.Context) ([]string, error) {
 	return tags, rows.Err()
 }
 
-func escapeLike(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	value = strings.ReplaceAll(value, "%", `\%`)
-	return strings.ReplaceAll(value, "_", `\_`)
+func archiveSearchQuery(value string) string {
+	return `"` + strings.ReplaceAll(strings.TrimSpace(value), `"`, `""`) + `" *`
 }
 
 func (s *ArchiveStore) Insert(ctx context.Context, a models.Archive) error {

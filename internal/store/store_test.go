@@ -208,6 +208,146 @@ func TestListArchivesFiltersByAllTagsAndDateRange(t *testing.T) {
 	}
 }
 
+func TestArchiveSearchStaysInSync(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	archiveID := uuid.New()
+	if err := s.Insert(ctx, models.Archive{
+		ID:          archiveID,
+		Name:        "Página principal",
+		Filename:    "pagina.wacz",
+		Description: "Crónica guardada AND",
+		SourceURL:   "https://ejemplo.test/documento",
+		Tags:        []string{"sección"},
+		CreatedAt:   time.Date(2026, 4, 2, 10, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("insert searchable archive: %v", err)
+	}
+
+	assertArchiveSearch(t, s, "pagina", "Página principal")
+	assertArchiveSearch(t, s, "cronica", "Página principal")
+	assertArchiveSearch(t, s, "seccion", "Página principal")
+	assertArchiveSearch(t, s, "pag", "Página principal")
+	assertArchiveSearch(t, s, "AND", "Página principal")
+	assertArchiveSearch(t, s, `"`)
+
+	if err := s.UpdateMetadata(ctx, archiveID, "Documento", "Actualización", []string{"información"}); err != nil {
+		t.Fatalf("update searchable archive: %v", err)
+	}
+	assertArchiveSearch(t, s, "pagina")
+	assertArchiveSearch(t, s, "seccion")
+	assertArchiveSearch(t, s, "actualizacion", "Documento")
+	assertArchiveSearch(t, s, "informacion", "Documento")
+
+	if err := s.Delete(ctx, archiveID); err != nil {
+		t.Fatalf("delete searchable archive: %v", err)
+	}
+	assertArchiveSearch(t, s, "documento")
+
+	err := s.Insert(ctx, models.Archive{
+		ID:       uuid.New(),
+		Name:     "Rollback",
+		Filename: "rollback.wacz",
+		Tags:     []string{"duplicate", "duplicate"},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate tags to roll back insert")
+	}
+	assertArchiveSearch(t, s, "rollback")
+}
+
+func TestArchiveSearchMigrationBackfillsExistingArchives(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "archiver.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite fixture: %v", err)
+	}
+	for version := 1; version < 7; version++ {
+		if _, err := db.Exec(migrationSQL(t, version)); err != nil {
+			t.Fatalf("apply migration v%d fixture: %v", version, err)
+		}
+	}
+	if _, err := db.Exec("PRAGMA user_version = 6;"); err != nil {
+		t.Fatalf("set fixture schema version: %v", err)
+	}
+	archiveID := uuid.New()
+	if _, err := db.Exec(
+		"INSERT INTO archives (id, name, filename, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?);",
+		archiveID, "Página migrada", "migrated.wacz", "", "", time.Now().UTC(), 1,
+	); err != nil {
+		t.Fatalf("insert archive fixture: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO tags (archive_id, tag) VALUES (?, ?);", archiveID, "información"); err != nil {
+		t.Fatalf("insert tag fixture: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close sqlite fixture: %v", err)
+	}
+
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	if err := s.RunMigrations(); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	assertArchiveSearch(t, s, "pagina", "Página migrada")
+	assertArchiveSearch(t, s, "informacion", "Página migrada")
+}
+
+func TestFutureMigrationsPreserveArchiveSearch(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "archiver.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite fixture: %v", err)
+	}
+	for version := 1; version <= 7; version++ {
+		if _, err := db.Exec(migrationSQL(t, version)); err != nil {
+			t.Fatalf("apply migration v%d fixture: %v", version, err)
+		}
+	}
+	if _, err := db.Exec("PRAGMA user_version = 7;"); err != nil {
+		t.Fatalf("set fixture schema version: %v", err)
+	}
+	archiveID := uuid.New()
+	if _, err := db.Exec(
+		"INSERT INTO archives (id, name, filename, description, source_url, created_at, size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?);",
+		archiveID, "Índice futuro", "future.wacz", "", "", time.Now().UTC(), 1,
+	); err != nil {
+		t.Fatalf("insert archive fixture: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close sqlite fixture: %v", err)
+	}
+
+	s, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	if err := s.RunMigrations(); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	assertArchiveSearch(t, s, "indice", "Índice futuro")
+	if err := s.UpdateMetadata(context.Background(), archiveID, "Migración futura", "", []string{"señal"}); err != nil {
+		t.Fatalf("update archive after migrations: %v", err)
+	}
+	assertArchiveSearch(t, s, "migracion", "Migración futura")
+	assertArchiveSearch(t, s, "senal", "Migración futura")
+	if err := s.Insert(context.Background(), models.Archive{
+		ID: uuid.New(), Name: "Después", Filename: "after.wacz", Tags: []string{"adición"},
+	}); err != nil {
+		t.Fatalf("insert archive after migrations: %v", err)
+	}
+	assertArchiveSearch(t, s, "despues", "Después")
+	assertArchiveSearch(t, s, "adicion", "Después")
+	if err := s.Delete(context.Background(), archiveID); err != nil {
+		t.Fatalf("delete archive after migrations: %v", err)
+	}
+	assertArchiveSearch(t, s, "migracion")
+}
+
 func TestArchiveListIndexes(t *testing.T) {
 	s := newTestStore(t)
 	var count int
@@ -231,6 +371,17 @@ func archiveNames(archives []models.Archive) []string {
 		names[i] = archive.Name
 	}
 	return names
+}
+
+func assertArchiveSearch(t *testing.T, s *ArchiveStore, query string, names ...string) {
+	t.Helper()
+	page, err := s.ListArchives(context.Background(), ListArchivesOptions{Search: query})
+	if err != nil {
+		t.Fatalf("search archives for %q: %v", query, err)
+	}
+	if got := archiveNames(page.Archives); !equalStrings(got, names) {
+		t.Fatalf("unexpected results for %q: got %v, want %v", query, got, names)
+	}
 }
 
 func equalStrings(left, right []string) bool {
