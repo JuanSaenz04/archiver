@@ -1,11 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { queryKeys } from "@/lib/queries";
 export const Route = createFileRoute("/create-archive")({
 	component: CreateArchive,
 });
@@ -19,6 +21,7 @@ const scopes = [
 ] as const;
 function CreateArchive() {
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const urlRef = useRef<HTMLInputElement>(null);
 	const [url, setUrl] = useState("");
 	const [name, setName] = useState("");
@@ -28,8 +31,23 @@ function CreateArchive() {
 	const [depth, setDepth] = useState(2);
 	const [pages, setPages] = useState(100);
 	const [size, setSize] = useState(0);
-	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const createJob = useMutation({
+		mutationFn: (body: {
+			url: string;
+			name: string;
+			description: string;
+			tags: string[];
+			crawl_options: {
+				scopeType: string;
+				page_limit: number;
+				size_limit: number;
+				depth: number;
+			};
+		}) => apiClient.post("/jobs", body),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: queryKeys.jobs }),
+	});
 	const submit = async (e: FormEvent) => {
 		e.preventDefault();
 		if (!url.trim()) {
@@ -44,10 +62,9 @@ function CreateArchive() {
 			urlRef.current?.focus();
 			return;
 		}
-		setLoading(true);
 		setError(null);
 		try {
-			await apiClient.post("/jobs", {
+			await createJob.mutateAsync({
 				url,
 				name,
 				description,
@@ -67,8 +84,6 @@ function CreateArchive() {
 			setError(
 				err instanceof Error ? err.message : "Unable to create archive job.",
 			);
-		} finally {
-			setLoading(false);
 		}
 	};
 	return (
@@ -224,11 +239,13 @@ function CreateArchive() {
 						<div className="mx-auto flex max-w-2xl justify-end">
 							<Button
 								type="submit"
-								disabled={loading}
+								disabled={createJob.isPending}
 								className="w-full sm:w-auto"
 							>
-								{loading && <Loader2 className="size-4 animate-spin" />}
-								{loading ? "Starting archive…" : "Start archiving"}
+								{createJob.isPending && (
+									<Loader2 className="size-4 animate-spin" />
+								)}
+								{createJob.isPending ? "Starting archive…" : "Start archiving"}
 							</Button>
 						</div>
 					</div>

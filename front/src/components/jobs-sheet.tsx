@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { List, RefreshCw } from "lucide-react";
-import { apiClient } from "@/lib/api";
 import { compactId, formatDateTime, hostname } from "@/lib/format";
-import type { Job } from "@/models/job";
 import { cn } from "@/lib/utils";
+import { jobsQueryOptions } from "@/lib/queries";
 import { StatusPill } from "@/components/status-pill";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,6 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
-type JobsResponse = Job[] | { jobs?: Job[] };
 interface JobsSheetProps {
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
@@ -27,40 +26,18 @@ export function JobsSheet({
 	showTrigger = true,
 }: JobsSheetProps) {
 	const [internalOpen, setInternalOpen] = useState(false);
-	const [jobs, setJobs] = useState<Job[]>([]);
-	const [loading, setLoading] = useState(false);
-	const [loaded, setLoaded] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const refresh = useCallback(async () => {
-		if (loading) return;
-		setLoading(true);
-		setError(null);
-		try {
-			const response = await apiClient.get<JobsResponse>("/jobs");
-			const list = Array.isArray(response) ? response : (response.jobs ?? []);
-			setJobs(
-				[...list].sort(
-					(a, b) =>
-						new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-				),
-			);
-			setLoaded(true);
-		} catch (e) {
-			setError(e instanceof Error ? e.message : "Unable to load jobs.");
-		} finally {
-			setLoading(false);
-		}
-	}, [loading]);
 	const change = (next: boolean) => {
 		if (open === undefined) setInternalOpen(next);
 		onOpenChange?.(next);
 	};
 	const isOpen = open ?? internalOpen;
-	useEffect(() => {
-		if (!isOpen || loaded || loading) return;
-		const request = window.setTimeout(() => void refresh(), 0);
-		return () => window.clearTimeout(request);
-	}, [isOpen, loaded, loading, refresh]);
+	const {
+		data: jobs = [],
+		error,
+		isFetched,
+		isFetching,
+		refetch,
+	} = useQuery({ ...jobsQueryOptions, enabled: isOpen });
 	return (
 		<Sheet open={isOpen} onOpenChange={change}>
 			{showTrigger && (
@@ -82,14 +59,14 @@ export function JobsSheet({
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={() => void refresh()}
-							disabled={loading}
+							onClick={() => void refetch()}
+							disabled={isFetching}
 						>
-							<RefreshCw className={cn("size-4", loading && "animate-spin")} />
+							<RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
 							Refresh
 						</Button>
 					</div>
-					{loading && !loaded ? (
+					{isFetching && !isFetched ? (
 						<div className="space-y-2">
 							{[1, 2, 3].map((i) => (
 								<div
@@ -102,8 +79,8 @@ export function JobsSheet({
 						<div className="grid flex-1 place-items-center text-center">
 							<div>
 								<p className="font-medium">Couldn’t load jobs</p>
-								<p className="my-2 text-sm text-muted-foreground">{error}</p>
-								<Button size="sm" onClick={() => void refresh()}>
+								<p className="my-2 text-sm text-muted-foreground">{error.message}</p>
+								<Button size="sm" onClick={() => void refetch()}>
 									Try again
 								</Button>
 							</div>

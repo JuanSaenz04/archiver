@@ -1,35 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { apiClient } from "@/lib/api";
-import type { Archive, GetArchivesResponse } from "@/models/archive";
 import { ArchiveViewer } from "@/components/archive-viewer";
 import { ArchiveTimeline } from "@/components/archive-timeline";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { paddedArchiveRange } from "@/lib/timeline";
-export const Route = createFileRoute("/timeline")({ component: Timeline });
+import { archivesQueryOptions } from "@/lib/queries";
+import { queryClient } from "@/lib/query-client";
+export const Route = createFileRoute("/timeline")({
+	loader: () => queryClient.ensureQueryData(archivesQueryOptions),
+	component: Timeline,
+});
 function Timeline() {
-	const [archives, setArchives] = useState<Archive[]>([]);
+	const { data = [], error } = useQuery(archivesQueryOptions);
+	const archives = useMemo(
+		() =>
+			[...data].sort(
+				(a, b) => +new Date(a.created_at) - +new Date(b.created_at),
+			),
+		[data],
+	);
 	const [query, setQuery] = useState("");
 	const [submitted, setSubmitted] = useState("");
 	const [selected, setSelected] = useState("");
 	const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	useEffect(() => {
-		apiClient
-			.get<GetArchivesResponse>("/archives")
-			.then((d) =>
-				setArchives(
-					[...d.archives].sort(
-						(a, b) => +new Date(a.created_at) - +new Date(b.created_at),
-					),
-				),
-			)
-			.catch((e) =>
-				setError(e instanceof Error ? e.message : "Unable to load archives"),
-			);
-	}, []);
 	const matches = useMemo(
 		() =>
 			archives.filter(
@@ -79,7 +75,7 @@ function Timeline() {
 				</p>
 				{error && (
 					<p role="alert" className="mt-3 text-sm text-destructive">
-						{error}
+						{error.message}
 					</p>
 				)}
 			</div>

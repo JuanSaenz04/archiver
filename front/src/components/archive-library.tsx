@@ -66,7 +66,6 @@ export function ArchiveLibrary({
 	};
 	const update = (archive: Archive) => {
 		setDetails(archive);
-		void onRefresh();
 	};
 	const visibleArchiveKey = filtered.map((archive) => archive.id).join(",");
 	useGSAP(
@@ -289,7 +288,6 @@ export function ArchiveLibrary({
 				onDeleted={(id) => {
 					if (id === selectedArchive) onSelect("");
 					setDetails(null);
-					void onRefresh();
 				}}
 				onUpdated={update}
 			/>

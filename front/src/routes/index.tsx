@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { PanelLeft } from "lucide-react";
-import { apiClient } from "@/lib/api";
-import type { Archive, GetArchivesResponse } from "@/models/archive";
 import { ArchiveLibrary } from "@/components/archive-library";
 import { ArchiveViewer } from "@/components/archive-viewer";
 import { Button } from "@/components/ui/button";
@@ -13,31 +12,21 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
+import { archivesQueryOptions } from "@/lib/queries";
+import { queryClient } from "@/lib/query-client";
 export const Route = createFileRoute("/")({
-	loader: async () =>
-		(await apiClient.get<GetArchivesResponse>("/archives")).archives,
+	loader: () => queryClient.ensureQueryData(archivesQueryOptions),
 	component: Index,
 });
 function Index() {
-	const initial = Route.useLoaderData();
-	const [archives, setArchives] = useState<Archive[]>(initial);
+	const { data: archives = [], error, isFetching, refetch } = useQuery(
+		archivesQueryOptions,
+	);
 	const [selected, setSelected] = useState("");
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
 	const [drawer, setDrawer] = useState(false);
-	const refresh = useCallback(async () => {
-		setLoading(true);
-		setError(null);
-		try {
-			setArchives(
-				(await apiClient.get<GetArchivesResponse>("/archives")).archives,
-			);
-		} catch (e) {
-			setError(e instanceof Error ? e.message : "Unable to load archives");
-		} finally {
-			setLoading(false);
-		}
-	}, []);
+	const refresh = async () => {
+		await refetch();
+	};
 	const choose = (id: string) => {
 		setSelected(id);
 		setDrawer(false);
@@ -48,8 +37,8 @@ function Index() {
 			archives={archives}
 			selectedArchive={selectedArchive?.id ?? ""}
 			onSelect={choose}
-			loading={loading}
-			error={error}
+			loading={isFetching}
+			error={error?.message ?? null}
 			onRefresh={refresh}
 		/>
 	);

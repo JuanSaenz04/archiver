@@ -2,11 +2,13 @@ import "./index.css";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { QueryClientProvider } from "@tanstack/react-query";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
 import { loadRuntimeConfig } from "./lib/runtime-config";
 import { RuntimeConfigProvider } from "./components/runtime-config-provider";
+import { queryClient } from "./lib/query-client";
 
 // Create a new router instance
 const router = createRouter({ routeTree });
@@ -27,9 +29,11 @@ async function renderApp() {
     const config = await loadRuntimeConfig();
     root.render(
       <StrictMode>
-        <RuntimeConfigProvider config={config}>
-          <RouterProvider router={router} />
-        </RuntimeConfigProvider>
+        <QueryClientProvider client={queryClient}>
+          <RuntimeConfigProvider config={config}>
+            <RouterProvider router={router} />
+          </RuntimeConfigProvider>
+        </QueryClientProvider>
       </StrictMode>,
     );
   } catch (error) {

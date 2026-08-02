@@ -23,7 +23,9 @@ import {
 	AlertCircle,
 } from "lucide-react";
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api";
+import { queryKeys } from "@/lib/queries";
 import { toast } from "sonner";
 import { displayArchiveName, formatBytes, formatDateTime } from "@/lib/format";
 import {
@@ -52,14 +54,27 @@ export function ArchiveDetailsDialog({
 	onDeleted,
 	onUpdated,
 }: Props) {
+	const queryClient = useQueryClient();
 	const [isEditing, setIsEditing] = useState(false);
 	const [editName, setEditName] = useState("");
 	const [editDescription, setEditDescription] = useState("");
 	const [editTags, setEditTags] = useState("");
 	const [isDeleting, setIsDeleting] = useState(false);
-	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
+	const updateArchive = useMutation({
+		mutationFn: ({
+			id,
+			payload,
+		}: {
+			id: string;
+			payload: { name: string; description: string; tags: string[] };
+		}) => apiClient.put(`/archives/${id}`, payload),
+	});
+	const deleteArchive = useMutation({
+		mutationFn: (id: string) => apiClient.delete(`/archives/${id}`),
+	});
+	const isLoading = updateArchive.isPending || deleteArchive.isPending;
 
 	if (!archive) return null;
 
@@ -105,7 +120,6 @@ export function ArchiveDetailsDialog({
 			.map((tag) => tag.trim())
 			.filter((tag) => tag.length > 0);
 
-		setIsLoading(true);
 		setError(null);
 		setSuccess(null);
 		try {
@@ -115,7 +129,7 @@ export function ArchiveDetailsDialog({
 				tags: parsedTags,
 			};
 
-			await apiClient.put(`/archives/${archive.id}`, payload);
+			await updateArchive.mutateAsync({ id: archive.id, payload });
 
 			const updatedArchive: Archive = {
 				...archive,
@@ -126,22 +140,21 @@ export function ArchiveDetailsDialog({
 
 			// Notify parent about the update
 			onUpdated(updatedArchive);
+			void queryClient.invalidateQueries({ queryKey: queryKeys.archives });
 
 			setIsEditing(false);
 			setSuccess("Archive updated successfully");
 			toast.success(`Archive "${editName}" updated`);
 		} catch (err: unknown) {
 			setError(err instanceof Error ? err.message : "Failed to update archive");
-		} finally {
-			setIsLoading(false);
 		}
 	};
 
 	const handleDelete = async () => {
-		setIsLoading(true);
 		setError(null);
 		try {
-			await apiClient.delete(`/archives/${archive.id}`);
+			await deleteArchive.mutateAsync(archive.id);
+			void queryClient.invalidateQueries({ queryKey: queryKeys.archives });
 			toast.success(`Archive "${displayArchiveName(archive.name)}" deleted`);
 			onDeleted(archive.id);
 			onOpenChange(false);
@@ -149,8 +162,6 @@ export function ArchiveDetailsDialog({
 		} catch (err: unknown) {
 			setError(err instanceof Error ? err.message : "Failed to delete archive");
 			setIsDeleting(false);
-		} finally {
-			setIsLoading(false);
 		}
 	};
 
