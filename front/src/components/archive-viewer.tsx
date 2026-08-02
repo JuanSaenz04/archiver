@@ -91,7 +91,8 @@ export function ArchiveViewer({ archive }: Props) {
 					src={viewerUrl.toString()}
 					onLoad={() => setLoadedId(archive.id)}
 					className="h-full w-full border-0"
-					title={`Archive replay: ${displayArchiveName(archive.name)}`}
+          title={`Archive replay: ${displayArchiveName(archive.name)}`}
+          allow="fullscreen"
 				/>
 			</div>
 		</section>
