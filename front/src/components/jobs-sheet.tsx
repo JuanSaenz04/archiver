@@ -1,119 +1,151 @@
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useState } from "react";
 import { List, RefreshCw } from "lucide-react";
-import { useState } from "react";
 import { apiClient } from "@/lib/api";
+import { compactId, formatDateTime, hostname } from "@/lib/format";
 import type { Job } from "@/models/job";
 import { cn } from "@/lib/utils";
-
+import { StatusPill } from "@/components/status-pill";
+import { Button } from "@/components/ui/button";
+import {
+	Sheet,
+	SheetContent,
+	SheetDescription,
+	SheetHeader,
+	SheetTitle,
+	SheetTrigger,
+} from "@/components/ui/sheet";
 type JobsResponse = Job[] | { jobs?: Job[] };
-
-function JobCard({ job }: { job: Job }) {
-  return (
-    <div className="mr-2 ml-2 p-3 border rounded-md text-sm">
-      <div className="font-medium truncate" title={job.url}>
-        {job.url}
-      </div>
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-xs text-muted-foreground font-mono">
-          {job.id.slice(0, 8)}
-        </span>
-        <span
-          className={cn(
-            "text-[10px] uppercase font-bold px-2 py-0.5 rounded-full",
-            job.status === "completed" &&
-              "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-            job.status === "failed" &&
-              "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-            job.status === "pending" &&
-              "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-            !["completed", "failed", "pending"].includes(job.status) &&
-              "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-          )}
-        >
-          {job.status}
-        </span>
-      </div>
-    </div>
-  );
+interface JobsSheetProps {
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	showTrigger?: boolean;
 }
 
-export function JobsSheet() {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const fetchJobs = async () => {
-    setIsLoading(true);
-    try {
-      const data = await apiClient.get<JobsResponse>("/jobs");
-
-      const jobsList = Array.isArray(data) ? data : (data.jobs ?? []);
-
-      // Sort jobs by created_at descending (newest first)
-      const sortedJobs = [...jobsList].sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-
-      setJobs(sortedJobs);
-    } catch (error) {
-      console.error("Failed to fetch jobs:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (open) {
-      void fetchJobs();
-    }
-  };
-
-  return (
-    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetTrigger asChild>
-        <Button size="icon" variant="outline" aria-label="View jobs">
-          <List />
-        </Button>
-      </SheetTrigger>
-      <SheetContent>
-        <SheetHeader>
-          <div className="flex items-center gap-2">
-            <SheetTitle>Jobs</SheetTitle>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={fetchJobs}
-              disabled={isLoading}
-              className="size-8"
-              aria-label="Refresh jobs"
-            >
-              <RefreshCw
-                className={cn("size-4", isLoading ? "animate-spin" : "")}
-              />
-            </Button>
-          </div>
-          <SheetDescription>Current status of crawling jobs.</SheetDescription>
-        </SheetHeader>
-        <div className="mt-4 flex flex-col gap-2 h-full overflow-y-auto pb-8">
-          {jobs.length === 0 ? (
-            <div className="text-center text-sm text-muted-foreground mt-8">
-              No jobs found.
-            </div>
-          ) : (
-            jobs.map((job) => <JobCard key={job.id} job={job} />)
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
+export function JobsSheet({
+	open,
+	onOpenChange,
+	showTrigger = true,
+}: JobsSheetProps) {
+	const [internalOpen, setInternalOpen] = useState(false);
+	const [jobs, setJobs] = useState<Job[]>([]);
+	const [loading, setLoading] = useState(false);
+	const [loaded, setLoaded] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const refresh = useCallback(async () => {
+		if (loading) return;
+		setLoading(true);
+		setError(null);
+		try {
+			const response = await apiClient.get<JobsResponse>("/jobs");
+			const list = Array.isArray(response) ? response : (response.jobs ?? []);
+			setJobs(
+				[...list].sort(
+					(a, b) =>
+						new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+				),
+			);
+			setLoaded(true);
+		} catch (e) {
+			setError(e instanceof Error ? e.message : "Unable to load jobs.");
+		} finally {
+			setLoading(false);
+		}
+	}, [loading]);
+	const change = (next: boolean) => {
+		if (open === undefined) setInternalOpen(next);
+		onOpenChange?.(next);
+	};
+	const isOpen = open ?? internalOpen;
+	useEffect(() => {
+		if (!isOpen || loaded || loading) return;
+		const request = window.setTimeout(() => void refresh(), 0);
+		return () => window.clearTimeout(request);
+	}, [isOpen, loaded, loading, refresh]);
+	return (
+		<Sheet open={isOpen} onOpenChange={change}>
+			{showTrigger && (
+				<SheetTrigger asChild>
+					<Button size="icon" variant="ghost" aria-label="View crawl jobs">
+						<List className="size-4" />
+					</Button>
+				</SheetTrigger>
+			)}
+			<SheetContent className="w-[min(28rem,calc(100vw-1rem))] gap-0 p-0">
+				<SheetHeader className="shrink-0 border-b pr-12">
+					<SheetTitle>Capture jobs</SheetTitle>
+					<SheetDescription>
+						Monitor queued and completed archive requests.
+					</SheetDescription>
+				</SheetHeader>
+				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+					<div className="mb-3 flex justify-end">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => void refresh()}
+							disabled={loading}
+						>
+							<RefreshCw className={cn("size-4", loading && "animate-spin")} />
+							Refresh
+						</Button>
+					</div>
+					{loading && !loaded ? (
+						<div className="space-y-2">
+							{[1, 2, 3].map((i) => (
+								<div
+									key={i}
+									className="h-20 animate-pulse rounded-md bg-muted"
+								/>
+							))}
+						</div>
+					) : error ? (
+						<div className="grid flex-1 place-items-center text-center">
+							<div>
+								<p className="font-medium">Couldn’t load jobs</p>
+								<p className="my-2 text-sm text-muted-foreground">{error}</p>
+								<Button size="sm" onClick={() => void refresh()}>
+									Try again
+								</Button>
+							</div>
+						</div>
+					) : !jobs.length ? (
+						<div className="grid flex-1 place-items-center text-center">
+							<div>
+								<p className="font-medium">No jobs yet</p>
+								<p className="mt-1 text-sm text-muted-foreground">
+									New capture requests will appear here.
+								</p>
+							</div>
+						</div>
+					) : (
+						<div className="space-y-2" aria-live="polite">
+							{jobs.map((j) => (
+								<article
+									key={j.id}
+									className="rounded-md border bg-surface p-3"
+								>
+									<div className="flex items-start justify-between gap-2">
+										<div className="min-w-0">
+											<p className="truncate font-medium">{hostname(j.url)}</p>
+											<p
+												className="truncate font-mono text-xs text-muted-foreground"
+												title={j.url}
+											>
+												{j.url}
+											</p>
+										</div>
+										<StatusPill status={j.status} />
+									</div>
+									<div className="mt-3 flex justify-between font-mono text-[.68rem] text-muted-foreground">
+										<span>{compactId(j.id)}</span>
+										<time>{formatDateTime(j.created_at)}</time>
+									</div>
+								</article>
+							))}
+						</div>
+					)}
+				</div>
+			</SheetContent>
+		</Sheet>
+	);
 }

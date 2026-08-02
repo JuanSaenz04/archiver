@@ -1,226 +1,211 @@
 import type { Archive } from "@/models/archive";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+	dateInputValue,
+	displayArchiveName,
+	formatDate,
+	formatDateTime,
+	hostname,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-interface ArchiveTimelineProps {
-  archives: Archive[];
-  selectedArchive: string;
-  rangeStart: Date;
-  rangeEnd: Date;
-  onSelect: (archiveId: string) => void;
-  onRangeChange: (start: Date, end: Date) => void;
+import { paddedArchiveRange } from "@/lib/timeline";
+import { gsap, useGSAP } from "@/lib/motion";
+interface Props {
+	archives: Archive[];
+	selectedArchive: string;
+	rangeStart: Date;
+	rangeEnd: Date;
+	onSelect: (id: string) => void;
+	onRangeChange: (start: Date, end: Date) => void;
 }
-
 export function ArchiveTimeline({
-  archives,
-  selectedArchive,
-  rangeStart,
-  rangeEnd,
-  onSelect,
-  onRangeChange,
-}: ArchiveTimelineProps) {
-  const handlePreset = (days: number | "all") => {
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    if (days === "all") {
-      if (archives.length > 0) {
-        onRangeChange(
-          new Date(archives[0].created_at),
-          new Date(archives[archives.length - 1].created_at),
-        );
-      }
-    } else {
-      const start = new Date(end);
-      start.setDate(end.getDate() - days);
-      start.setHours(0, 0, 0, 0);
-      onRangeChange(start, end);
-    }
-  };
-
-  const rangeStartMs = rangeStart.getTime();
-  const rangeEndMs = rangeEnd.getTime();
-  const rangeDuration = Math.max(1, rangeEndMs - rangeStartMs); // Prevent division by zero
-
-  const visibleArchives = archives.filter((a) => {
-    const time = new Date(a.created_at).getTime();
-    return time >= rangeStartMs && time <= rangeEndMs;
-  });
-
-  // Ensure dates input values are in YYYY-MM-DD
-  const formatYMD = (d: Date) => {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  };
-
-  const formatDisplayDate = (d: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }).format(d);
-  };
-
-  const formatDisplayDateTime = (d: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).format(d);
-  };
-
-  return (
-    <div className="flex flex-col gap-4 p-4 border-t bg-card text-card-foreground">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => handlePreset(7)}>
-            7d
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handlePreset(30)}>
-            30d
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handlePreset(365)}>
-            1y
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handlePreset("all")}
-          >
-            All
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">From:</span>
-          <Input
-            type="date"
-            className="w-auto h-8 text-sm"
-            value={formatYMD(rangeStart)}
-            onChange={(e) => {
-              if (e.target.value) {
-                const newStart = new Date(e.target.value + "T00:00:00"); // avoid timezone issues
-                if (!isNaN(newStart.getTime()) && newStart <= rangeEnd) {
-                  onRangeChange(newStart, rangeEnd);
-                }
-              }
-            }}
-          />
-          <span className="text-sm font-medium">To:</span>
-          <Input
-            type="date"
-            className="w-auto h-8 text-sm"
-            value={formatYMD(rangeEnd)}
-            onChange={(e) => {
-              if (e.target.value) {
-                const newEnd = new Date(e.target.value + "T23:59:59");
-                if (!isNaN(newEnd.getTime()) && newEnd >= rangeStart) {
-                  onRangeChange(rangeStart, newEnd);
-                }
-              }
-            }}
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="relative h-12 w-full flex items-center overflow-hidden">
-        {/* Timeline Track line */}
-        <div className="absolute w-full h-0.5 bg-muted"></div>
-
-        {archives.map((archive) => {
-          const time = new Date(archive.created_at).getTime();
-          let ratio = (time - rangeStartMs) / rangeDuration;
-
-          // Determine if it's within the visible range
-          const isVisible = time >= rangeStartMs && time <= rangeEndMs;
-
-          // Clamp for rendering position so they animate from/to the edges
-          ratio = Math.max(-0.05, Math.min(1.05, ratio));
-          const leftPercent = ratio * 100;
-          const isSelected = archive.id === selectedArchive;
-
-          return (
-            <Tooltip key={archive.id}>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "absolute w-6 h-6 -ml-3 rounded-full hover:bg-accent hover:scale-125",
-                    "transition-[left,transform,opacity,background-color] duration-300 ease-in-out motion-reduce:transition-none",
-                    !isVisible && "opacity-0 scale-50 pointer-events-none",
-                  )}
-                  style={{ left: `${leftPercent}%` }}
-                  aria-label={archive.name || "Unnamed archive"}
-                  onClick={(e) => {
-                    if (e.shiftKey) {
-                      const archiveTime = new Date(
-                        archive.created_at,
-                      ).getTime();
-                      const currentRangeStart = rangeStart.getTime();
-                      const currentRangeEnd = rangeEnd.getTime();
-                      const currentWindow = currentRangeEnd - currentRangeStart;
-
-                      // Zoom in factor: new window will be 50% of the current window
-                      const factor = 0.5;
-                      const newWindow = currentWindow * factor;
-
-                      // Minimum window of ~1 hour
-                      const minWindow = 60 * 60 * 1000;
-                      const finalWindow = Math.max(newWindow, minWindow);
-
-                      // Center the new window on the archive
-                      const newStartMs = archiveTime - finalWindow / 2;
-                      const newEndMs = archiveTime + finalWindow / 2;
-
-                      onRangeChange(new Date(newStartMs), new Date(newEndMs));
-                    } else {
-                      onSelect(archive.id);
-                    }
-                  }}
-                >
-                  <div
-                    className={cn(
-                      "w-3 h-3 rounded-full shadow-sm transition-colors",
-                      isSelected
-                        ? "bg-primary scale-110"
-                        : "bg-muted-foreground",
-                    )}
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="flex flex-col gap-1 z-50">
-                <span className="font-semibold">
-                  {archive.name || "Unnamed"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {formatDisplayDateTime(new Date(archive.created_at))}
-                </span>
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
-      </div>
-
-      <div className="flex justify-between items-center text-xs text-muted-foreground">
-        <span>{formatDisplayDate(rangeStart)}</span>
-        <div className="flex flex-col items-center gap-1">
-          <span>{visibleArchives.length} archives visible</span>
-          <span className="hidden md:inline-block text-[10px] opacity-70 italic">
-            Shift + Click an archive to zoom in
-          </span>
-        </div>
-        <span>{formatDisplayDate(rangeEnd)}</span>
-      </div>
-    </div>
-  );
+	archives,
+	selectedArchive,
+	rangeStart,
+	rangeEnd,
+	onSelect,
+	onRangeChange,
+}: Props) {
+	const trackRef = useRef<HTMLDivElement>(null);
+	const previousPositions = useRef(new Map<string, string>());
+	const presets: [string, number | "all"][] = [
+		["7 days", 7],
+		["30 days", 30],
+		["1 year", 365],
+		["All", "all"],
+	];
+	const preset = (days: number | "all") => {
+		const end = new Date();
+		end.setHours(23, 59, 59, 999);
+		if (days === "all" && archives.length) {
+			const allRange = paddedArchiveRange(archives);
+			if (allRange) onRangeChange(allRange.start, allRange.end);
+			return;
+		}
+		const start = new Date(end);
+		start.setDate(start.getDate() - Number(days));
+		start.setHours(0, 0, 0, 0);
+		onRangeChange(start, end);
+	};
+	const start = rangeStart.getTime(),
+		duration = Math.max(1, rangeEnd.getTime() - start);
+	const visible = archives.filter((a) => {
+		const time = new Date(a.created_at).getTime();
+		return time >= start && time <= rangeEnd.getTime();
+	});
+	const markerKey = visible
+		.map((archive) => `${archive.id}:${archive.created_at}`)
+		.join(",");
+	useGSAP(
+		() => {
+			const media = gsap.matchMedia();
+			media.add("(prefers-reduced-motion: no-preference)", () => {
+				const markers = trackRef.current?.querySelectorAll<HTMLButtonElement>(
+					"[data-timeline-marker]",
+				);
+				markers?.forEach((marker) => {
+					const id = marker.dataset.markerId;
+					const target = marker.dataset.markerPosition;
+					if (!id || !target) return;
+					const previous = previousPositions.current.get(id) ?? target;
+					gsap.fromTo(
+						marker,
+						{ left: previous },
+						{ left: target, duration: 0.32, overwrite: "auto" },
+					);
+					previousPositions.current.set(id, target);
+				});
+			});
+			return () => media.revert();
+		},
+		{ scope: trackRef, dependencies: [markerKey, rangeStart, rangeEnd] },
+	);
+	return (
+		<section
+			className="rounded-lg border bg-surface p-3 md:p-4"
+			aria-label="Capture timeline"
+		>
+			<div className="flex flex-wrap gap-2">
+				<div className="flex max-w-full gap-1 overflow-x-auto">
+					{presets.map(([label, value]) => (
+						<Button
+							key={label}
+							size="sm"
+							variant="outline"
+							onClick={() => preset(value)}
+						>
+							{label}
+						</Button>
+					))}
+				</div>
+				<div className="grid w-full gap-2 sm:ml-auto sm:w-auto sm:grid-cols-2">
+					<label className="text-xs text-muted-foreground">
+						From
+						<Input
+							type="date"
+							className="mt-1 w-full"
+							value={dateInputValue(rangeStart)}
+							onChange={(e) => {
+								const d = new Date(`${e.target.value}T00:00:00`);
+								if (!Number.isNaN(+d) && d <= rangeEnd)
+									onRangeChange(d, rangeEnd);
+							}}
+						/>
+					</label>
+					<label className="text-xs text-muted-foreground">
+						To
+						<Input
+							type="date"
+							className="mt-1 w-full"
+							value={dateInputValue(rangeEnd)}
+							onChange={(e) => {
+								const d = new Date(`${e.target.value}T23:59:59`);
+								if (!Number.isNaN(+d) && d >= rangeStart)
+									onRangeChange(rangeStart, d);
+							}}
+						/>
+					</label>
+				</div>
+			</div>
+			<div className="mt-4 hidden md:block">
+				<div ref={trackRef} className="relative h-14 px-4">
+					<div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+					{visible.map((a, index) => {
+						const ratio = (new Date(a.created_at).getTime() - start) / duration;
+						const insetRatio = 0.04 + ratio * 0.92;
+						const offset = ((index % 3) - 1) * 8;
+						return (
+							<button
+								key={a.id}
+								data-timeline-marker
+								data-marker-id={a.id}
+								data-marker-position={`${insetRatio * 100}%`}
+								type="button"
+								onClick={() => onSelect(a.id)}
+								onKeyDown={(e) => {
+									if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+										e.preventDefault();
+										const i =
+											visible.indexOf(a) + (e.key === "ArrowRight" ? 1 : -1);
+										if (visible[i]) onSelect(visible[i].id);
+									}
+								}}
+								className={cn(
+									"absolute top-1/2 grid size-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full transition-[left,margin-top,background-color] duration-200 focus-visible:z-10",
+									a.id === selectedArchive
+										? "bg-primary text-primary-foreground"
+										: "bg-surface-raised ring-1 ring-border hover:bg-accent",
+								)}
+								style={{ left: `${insetRatio * 100}%`, marginTop: offset }}
+								aria-label={`${displayArchiveName(a.name)}, ${formatDateTime(a.created_at)}`}
+							>
+								<span className="size-2 rounded-full bg-current" />
+							</button>
+						);
+					})}
+				</div>
+				<div className="flex justify-between text-xs text-muted-foreground">
+					<span>{formatDate(rangeStart)}</span>
+					<span aria-live="polite">{visible.length} captures in range</span>
+					<span>{formatDate(rangeEnd)}</span>
+				</div>
+			</div>
+			<div className="mt-4 space-y-1 md:hidden" aria-live="polite">
+				{visible.length ? (
+					visible.map((a) => (
+						<button
+							key={a.id}
+							type="button"
+							onClick={() => onSelect(a.id)}
+							className={cn(
+								"flex min-h-14 w-full items-center gap-3 rounded-md p-3 text-left",
+								a.id === selectedArchive
+									? "bg-surface-subtle ring-1 ring-primary/30"
+									: "bg-muted/50",
+							)}
+						>
+							<span className="size-2 shrink-0 rounded-full bg-primary" />
+							<span className="min-w-0 flex-1">
+								<span className="block truncate text-sm font-medium">
+									{displayArchiveName(a.name)}
+								</span>
+								<span className="block truncate font-mono text-xs text-muted-foreground">
+									{hostname(a.source_url)}
+								</span>
+							</span>
+							<time className="shrink-0 text-xs text-muted-foreground">
+								{formatDateTime(a.created_at)}
+							</time>
+						</button>
+					))
+				) : (
+					<p className="py-4 text-center text-sm text-muted-foreground">
+						No captures in this range.
+					</p>
+				)}
+			</div>
+		</section>
+	);
 }
