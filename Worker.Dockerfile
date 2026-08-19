@@ -10,7 +10,7 @@ RUN --mount=type=cache,id=archiver-go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=archiver-go-build,target=/root/.cache/go-build \
     go build -o worker ./cmd/worker/main.go
 
-FROM webrecorder/browsertrix-crawler:1.14.1
+FROM webrecorder/browsertrix-crawler:1.14.2
 
 COPY --from=builder /app/worker /usr/local/bin/worker
 
