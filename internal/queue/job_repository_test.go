@@ -2,9 +2,9 @@ package queue
 
 import (
 	"testing"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -4,8 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func TestGetWorkerName_ConsumerNameEnv(t *testing.T) {

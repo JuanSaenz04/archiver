@@ -3,8 +3,7 @@ package worker
 import (
 	"os"
 	"strings"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func GetWorkerName() string {
@@ -23,5 +22,5 @@ func GetWorkerName() string {
 		}
 	}
 
-	return "worker-" + uuid.NewString()
+	return "worker-" + uuid.New().String()
 }

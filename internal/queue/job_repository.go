@@ -3,9 +3,9 @@ package queue
 import (
 	"context"
 	"fmt"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 

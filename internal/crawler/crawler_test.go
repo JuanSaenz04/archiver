@@ -7,10 +7,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ import (
 func newTestStore(t *testing.T) *store.ArchiveStore {
 	t.Helper()
 
-	dbPath := "file:" + uuid.NewString() + "?mode=memory&cache=shared"
+	dbPath := "file:" + uuid.New().String() + "?mode=memory&cache=shared"
 	s, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatalf("open store: %v", err)

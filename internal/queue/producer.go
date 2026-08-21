@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 

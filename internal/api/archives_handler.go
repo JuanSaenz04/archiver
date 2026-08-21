@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 )
 
@@ -145,7 +145,7 @@ func decodeArchiveCursor(value string) (store.ArchiveCursor, error) {
 	if err := json.Unmarshal(data, &cursor); err != nil {
 		return store.ArchiveCursor{}, err
 	}
-	if cursor.CreatedAt.IsZero() || cursor.ID == uuid.Nil {
+	if cursor.CreatedAt.IsZero() || cursor.ID == uuid.Nil() {
 		return store.ArchiveCursor{}, errors.New("invalid cursor")
 	}
 	return cursor, nil

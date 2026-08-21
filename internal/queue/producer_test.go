@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
@@ -32,7 +32,7 @@ func TestEnqueueCrawl_Success(t *testing.T) {
 	// Assertions
 	assert.NoError(t, err)
 	assert.NotNil(t, jobID)
-	assert.NotEqual(t, uuid.Nil, *jobID)
+	assert.NotEqual(t, uuid.Nil(), *jobID)
 
 	// 1. Verify that the job details are stored in a Hash at "job:<jobID>"
 	jobKey := "job:" + jobID.String()
