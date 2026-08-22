@@ -47,7 +47,7 @@ func TestCrawlerRun_Success(t *testing.T) {
 	collectionsDir := filepath.Join(tempDir, "collections")
 	archivesDir := filepath.Join(tempDir, "archives")
 
-	t.Setenv("ARCHIVES_DIR", archivesDir)
+	crawler.archivesDir = archivesDir
 	crawler.collectionsDir = collectionsDir
 
 	jobID := uuid.New().String()
@@ -132,7 +132,7 @@ func TestCrawlerRun_CrawlCommandFailure(t *testing.T) {
 	crawler := NewCrawler(Config{TimeoutInSeconds: 30, AnubisMode: AnubisModeOff}, archiveStore)
 
 	tempDir := t.TempDir()
-	t.Setenv("ARCHIVES_DIR", filepath.Join(tempDir, "archives"))
+	crawler.archivesDir = filepath.Join(tempDir, "archives")
 
 	crawler.runCmd = func(cmd *exec.Cmd) error {
 		return errors.New("xvfb-run crashed")
@@ -164,7 +164,7 @@ func TestCrawlerRun_DuplicateNamePreservesExistingArchive(t *testing.T) {
 	collectionsDir := filepath.Join(tempDir, "collections")
 	archivesDir := filepath.Join(tempDir, "archives")
 
-	t.Setenv("ARCHIVES_DIR", archivesDir)
+	crawler.archivesDir = archivesDir
 	crawler.collectionsDir = collectionsDir
 	if err := os.MkdirAll(archivesDir, 0755); err != nil {
 		t.Fatalf("create archives directory: %v", err)
@@ -220,33 +220,6 @@ func TestCrawlerRun_DuplicateNamePreservesExistingArchive(t *testing.T) {
 	}
 	assert.Equal(t, "Duplicate-Name.wacz", filenames[existingArchive.ID])
 	assert.Equal(t, "Duplicate-Name-1.wacz", filenames[archive.ID])
-}
-
-func TestParseAnubisMode(t *testing.T) {
-	tests := []struct {
-		name    string
-		value   string
-		want    AnubisMode
-		wantErr bool
-	}{
-		{name: "empty defaults to auto", want: AnubisModeAuto},
-		{name: "auto", value: "auto", want: AnubisModeAuto},
-		{name: "always case insensitive", value: " ALWAYS ", want: AnubisModeAlways},
-		{name: "off", value: "off", want: AnubisModeOff},
-		{name: "invalid", value: "enabled", wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseAnubisMode(tt.value)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
-			assert.Equal(t, tt.want, got)
-		})
-	}
 }
 
 func TestAnubisDetector(t *testing.T) {
@@ -334,8 +307,6 @@ func TestCrawlerRun_AnubisDriverModes(t *testing.T) {
 				capturedCmd = cmd
 				return nil
 			}
-			t.Setenv("ARCHIVES_DIR", "")
-
 			err := crawler.Run(context.Background(), uuid.New().String(), models.Archive{
 				Name:      "Anubis Test",
 				SourceURL: "https://example.com/",

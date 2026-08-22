@@ -17,10 +17,25 @@ import (
 	"github.com/JuanSaenz04/archiver/internal/store"
 )
 
+type AnubisMode string
+
+const (
+	AnubisModeAuto   AnubisMode = "auto"
+	AnubisModeAlways AnubisMode = "always"
+	AnubisModeOff    AnubisMode = "off"
+)
+
+type Config struct {
+	TimeoutInSeconds int
+	AnubisMode       AnubisMode
+	ArchivesDir      string
+}
+
 type Crawler struct {
 	timeoutInSeconds int
 	anubisMode       AnubisMode
 	archiveStore     *store.ArchiveStore
+	archivesDir      string
 	collectionsDir   string
 	runCmd           func(cmd *exec.Cmd) error
 	detectAnubis     func(context.Context, string) (bool, error)
@@ -35,6 +50,7 @@ func NewCrawler(config Config, archiveStore *store.ArchiveStore) *Crawler {
 		timeoutInSeconds: config.TimeoutInSeconds,
 		anubisMode:       config.AnubisMode,
 		archiveStore:     archiveStore,
+		archivesDir:      config.ArchivesDir,
 		collectionsDir:   "collections",
 		runCmd:           func(cmd *exec.Cmd) error { return cmd.Run() },
 		detectAnubis:     newAnubisDetector(),
@@ -84,7 +100,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		return err
 	}
 
-	archivesDir := os.Getenv("ARCHIVES_DIR")
+	archivesDir := crawler.archivesDir
 	if archivesDir == "" {
 		slog.Warn("ARCHIVES_DIR not set, archive will not be persisted", "job_id", jobID, "url", archive.SourceURL)
 		return nil

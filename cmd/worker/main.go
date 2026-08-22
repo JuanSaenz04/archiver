@@ -2,36 +2,19 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/JuanSaenz04/archiver/internal/crawler"
 	"github.com/JuanSaenz04/archiver/internal/queue"
 	"github.com/JuanSaenz04/archiver/internal/store"
-	"github.com/JuanSaenz04/archiver/internal/worker"
 	"github.com/redis/go-redis/v9"
 )
 
 func main() {
-	level := slog.LevelInfo
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
-	case "debug":
-		level = slog.LevelDebug
-	case "warn", "warning":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	}
-
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
-
 	if err := run(); err != nil {
 		slog.Error("worker failed", "error", err)
 		os.Exit(1)
@@ -39,15 +22,18 @@ func main() {
 }
 
 func run() error {
+	configureLogger(slog.LevelInfo)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	configureLogger(cfg.LogLevel)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	opts, err := redis.ParseURL(os.Getenv("REDIS_URL"))
-	if err != nil {
-		return fmt.Errorf("invalid REDIS_URL: %w", err)
-	}
-
-	rdb := redis.NewClient(opts)
+	rdb := redis.NewClient(cfg.RedisOptions)
 
 	defer func() {
 		if err := rdb.Close(); err != nil {
@@ -55,31 +41,10 @@ func run() error {
 		}
 	}()
 
-	timeoutEnv := os.Getenv("CRAWLER_TIMEOUT")
+	archivesDir := cfg.ArchivesDir
+	sqliteDir := cfg.SQLiteDir
 
-	timeoutSeconds, err := strconv.Atoi(timeoutEnv)
-
-	if err != nil {
-		timeoutSeconds = 90
-		slog.Debug("invalid CRAWLER_TIMEOUT, using default", "value", timeoutEnv, "default", timeoutSeconds)
-	}
-
-	anubisMode, err := crawler.ParseAnubisMode(os.Getenv("ANUBIS_MODE"))
-	if err != nil {
-		return err
-	}
-
-	archivesDir := os.Getenv("ARCHIVES_DIR")
-	if archivesDir == "" {
-		return errors.New("environment variable ARCHIVES_DIR not set")
-	}
-
-	sqliteDir := os.Getenv("SQLITE_DIR")
-	if sqliteDir == "" {
-		sqliteDir = archivesDir
-	}
-
-	archiveStore, err := store.Open(filepath.Join(sqliteDir, "archive.db"))
+	archiveStore, err := store.Open(databasePath(cfg))
 	if err != nil {
 		return fmt.Errorf("open sqlite database: %w", err)
 	}
@@ -94,19 +59,22 @@ func run() error {
 	}
 
 	crawlerConfig := crawler.Config{
-		TimeoutInSeconds: timeoutSeconds,
-		AnubisMode:       anubisMode,
+		TimeoutInSeconds: cfg.CrawlerTimeout,
+		AnubisMode:       cfg.AnubisMode,
+		ArchivesDir:      cfg.ArchivesDir,
 	}
 	crawler := crawler.NewCrawler(crawlerConfig, archiveStore)
 
-	slog.Info("starting worker", "timeout_seconds", timeoutSeconds, "anubis_mode", anubisMode, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
+	slog.Info("starting worker", "timeout_seconds", cfg.CrawlerTimeout, "anubis_mode", cfg.AnubisMode, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
 
-	consumerName := worker.GetWorkerName()
-
-	if err := queue.StartWorker(ctx, rdb, consumerName, crawler.Run); err != nil {
+	if err := queue.StartWorker(ctx, rdb, cfg.ConsumerName, crawler.Run); err != nil {
 		return fmt.Errorf("start worker: %w", err)
 	}
 
 	slog.Info("worker stopped gracefully")
 	return nil
+}
+
+func configureLogger(level slog.Level) {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
 }

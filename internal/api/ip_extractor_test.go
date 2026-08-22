@@ -7,10 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetIPExtractorFromEnv_Empty(t *testing.T) {
-	t.Setenv("TRUSTED_PROXIES", "")
-
-	extractor := GetIPExtractorFromEnv()
+func TestGetIPExtractor_Empty(t *testing.T) {
+	extractor := GetIPExtractor("")
 	assert.NotNil(t, extractor)
 
 	// RemoteAddr has port; ExtractIPDirect should strip it.
@@ -22,10 +20,8 @@ func TestGetIPExtractorFromEnv_Empty(t *testing.T) {
 	assert.Equal(t, "203.0.113.50", ip, "Should trust only RemoteAddr when TRUSTED_PROXIES is empty")
 }
 
-func TestGetIPExtractorFromEnv_SingleIP(t *testing.T) {
-	t.Setenv("TRUSTED_PROXIES", "192.168.1.1, 2001:db8::1")
-
-	extractor := GetIPExtractorFromEnv()
+func TestGetIPExtractor_SingleIP(t *testing.T) {
+	extractor := GetIPExtractor("192.168.1.1, 2001:db8::1")
 	assert.NotNil(t, extractor)
 
 	// Scenario 1: Request comes from an untrusted client directly (even if header contains trusted proxy)
@@ -47,10 +43,8 @@ func TestGetIPExtractorFromEnv_SingleIP(t *testing.T) {
 	assert.Equal(t, "203.0.113.12", extractor(req3), "Should trust IPv6 proxy and extract client IP")
 }
 
-func TestGetIPExtractorFromEnv_CIDR(t *testing.T) {
-	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/16")
-
-	extractor := GetIPExtractorFromEnv()
+func TestGetIPExtractor_CIDR(t *testing.T) {
+	extractor := GetIPExtractor("10.0.0.0/16")
 	assert.NotNil(t, extractor)
 
 	// Connection from within CIDR range
@@ -66,11 +60,9 @@ func TestGetIPExtractorFromEnv_CIDR(t *testing.T) {
 	assert.Equal(t, "10.1.5.2", extractor(req2), "Should ignore XFF when connection is from outside CIDR range")
 }
 
-func TestGetIPExtractorFromEnv_MalformedAndWhitespace(t *testing.T) {
+func TestGetIPExtractor_MalformedAndWhitespace(t *testing.T) {
 	// Mixed with extra spaces, empty elements, and invalid IP configurations
-	t.Setenv("TRUSTED_PROXIES", " 192.168.1.10, , invalid_net, 10.0.0.0/8 ")
-
-	extractor := GetIPExtractorFromEnv()
+	extractor := GetIPExtractor(" 192.168.1.10, , invalid_net, 10.0.0.0/8 ")
 	assert.NotNil(t, extractor)
 
 	// The valid elements (192.168.1.10 and 10.0.0.0/8) should still work.

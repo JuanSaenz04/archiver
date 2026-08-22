@@ -20,7 +20,7 @@ COPY --from=frontend-builder /app/front/dist ./internal/api/dist
 
 RUN --mount=type=cache,id=archiver-go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=archiver-go-build,target=/root/.cache/go-build \
-    go build -o api ./cmd/api/main.go
+    go build -o api ./cmd/api
 
 # Stage 3: Final Image
 FROM gcr.io/distroless/static-debian13:latest

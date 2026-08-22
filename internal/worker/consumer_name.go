@@ -6,12 +6,12 @@ import (
 	"uuid"
 )
 
-func GetWorkerName() string {
-	if name := strings.TrimSpace(os.Getenv("CONSUMER_NAME")); name != "" {
+func GetWorkerName(configuredName, configuredHostname string) string {
+	if name := strings.TrimSpace(configuredName); name != "" {
 		return name
 	}
 
-	if hostname := strings.TrimSpace(os.Getenv("HOSTNAME")); hostname != "" {
+	if hostname := strings.TrimSpace(configuredHostname); hostname != "" {
 		return "worker-" + hostname
 	}
 

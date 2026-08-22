@@ -8,7 +8,7 @@ RUN --mount=type=cache,id=archiver-go-mod,target=/go/pkg/mod \
 COPY . ./
 RUN --mount=type=cache,id=archiver-go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=archiver-go-build,target=/root/.cache/go-build \
-    go build -o worker ./cmd/worker/main.go
+    go build -o worker ./cmd/worker
 
 FROM webrecorder/browsertrix-crawler:1.14.2
 
