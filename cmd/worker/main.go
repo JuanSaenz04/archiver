@@ -64,6 +64,11 @@ func run() error {
 		slog.Debug("invalid CRAWLER_TIMEOUT, using default", "value", timeoutEnv, "default", timeoutSeconds)
 	}
 
+	anubisMode, err := crawler.ParseAnubisMode(os.Getenv("ANUBIS_MODE"))
+	if err != nil {
+		return err
+	}
+
 	archivesDir := os.Getenv("ARCHIVES_DIR")
 	if archivesDir == "" {
 		return errors.New("environment variable ARCHIVES_DIR not set")
@@ -88,9 +93,13 @@ func run() error {
 		return fmt.Errorf("run sqlite migrations: %w", err)
 	}
 
-	crawler := crawler.NewCrawler(timeoutSeconds, archiveStore)
+	crawlerConfig := crawler.Config{
+		TimeoutInSeconds: timeoutSeconds,
+		AnubisMode:       anubisMode,
+	}
+	crawler := crawler.NewCrawler(crawlerConfig, archiveStore)
 
-	slog.Info("starting worker", "timeout_seconds", timeoutSeconds, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
+	slog.Info("starting worker", "timeout_seconds", timeoutSeconds, "anubis_mode", anubisMode, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
 
 	consumerName := worker.GetWorkerName()
 

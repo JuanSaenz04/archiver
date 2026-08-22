@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"uuid"
 
@@ -39,7 +40,7 @@ func newTestStore(t *testing.T) *store.ArchiveStore {
 
 func TestCrawlerRun_Success(t *testing.T) {
 	archiveStore := newTestStore(t)
-	crawler := NewCrawler(30, archiveStore)
+	crawler := NewCrawler(Config{TimeoutInSeconds: 30, AnubisMode: AnubisModeOff}, archiveStore)
 
 	// Setup temporary directories for collections (source) and archives (destination)
 	tempDir := t.TempDir()
@@ -128,7 +129,7 @@ func TestCrawlerRun_Success(t *testing.T) {
 
 func TestCrawlerRun_CrawlCommandFailure(t *testing.T) {
 	archiveStore := newTestStore(t)
-	crawler := NewCrawler(30, archiveStore)
+	crawler := NewCrawler(Config{TimeoutInSeconds: 30, AnubisMode: AnubisModeOff}, archiveStore)
 
 	tempDir := t.TempDir()
 	t.Setenv("ARCHIVES_DIR", filepath.Join(tempDir, "archives"))
@@ -157,7 +158,7 @@ func TestCrawlerRun_CrawlCommandFailure(t *testing.T) {
 
 func TestCrawlerRun_DuplicateNamePreservesExistingArchive(t *testing.T) {
 	archiveStore := newTestStore(t)
-	crawler := NewCrawler(30, archiveStore)
+	crawler := NewCrawler(Config{TimeoutInSeconds: 30, AnubisMode: AnubisModeOff}, archiveStore)
 
 	tempDir := t.TempDir()
 	collectionsDir := filepath.Join(tempDir, "collections")
@@ -219,4 +220,136 @@ func TestCrawlerRun_DuplicateNamePreservesExistingArchive(t *testing.T) {
 	}
 	assert.Equal(t, "Duplicate-Name.wacz", filenames[existingArchive.ID])
 	assert.Equal(t, "Duplicate-Name-1.wacz", filenames[archive.ID])
+}
+
+func TestParseAnubisMode(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    AnubisMode
+		wantErr bool
+	}{
+		{name: "empty defaults to auto", want: AnubisModeAuto},
+		{name: "auto", value: "auto", want: AnubisModeAuto},
+		{name: "always case insensitive", value: " ALWAYS ", want: AnubisModeAlways},
+		{name: "off", value: "off", want: AnubisModeOff},
+		{name: "invalid", value: "enabled", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseAnubisMode(tt.value)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestAnubisDetector(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "challenge script",
+			body: `<script id="anubis_challenge" type="application/json">{}</script>`,
+			want: true,
+		},
+		{
+			name: "Anubis error page",
+			body: `<img src="/.within.website/x/cmd/anubis/static/img/reject.webp"><a href="https://github.com/TecharoHQ/anubis">Anubis</a>`,
+			want: true,
+		},
+		{
+			name: "unrelated page",
+			body: `<html><title>Example</title></html>`,
+		},
+		{
+			name: "Anubis link without served asset",
+			body: `<a href="https://github.com/TecharoHQ/anubis">Read about Anubis</a>`,
+		},
+		{
+			name: "marker beyond detection limit",
+			body: strings.Repeat("x", anubisDetectionLimit) + `<script id="anubis_challenge"></script>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			detected, err := responseHasAnubis(strings.NewReader(tt.body))
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, detected)
+		})
+	}
+}
+
+func TestNewAnubisDetectionRequest(t *testing.T) {
+	req, err := newAnubisDetectionRequest(context.Background(), "https://example.com/")
+	assert.NoError(t, err)
+
+	assert.Equal(t, anubisDetectionAgent, req.Header.Get("User-Agent"))
+	assert.Contains(t, req.Header.Get("Accept"), "text/html")
+	assert.Equal(t, "en-US,en;q=0.9", req.Header.Get("Accept-Language"))
+	assert.Equal(t, "document", req.Header.Get("Sec-Fetch-Dest"))
+	assert.Equal(t, "navigate", req.Header.Get("Sec-Fetch-Mode"))
+	assert.Equal(t, "none", req.Header.Get("Sec-Fetch-Site"))
+	assert.Equal(t, "?1", req.Header.Get("Sec-Fetch-User"))
+	assert.Equal(t, "1", req.Header.Get("Upgrade-Insecure-Requests"))
+}
+
+func TestCrawlerRun_AnubisDriverModes(t *testing.T) {
+	tests := []struct {
+		name          string
+		mode          AnubisMode
+		detected      bool
+		detectionErr  error
+		wantDriver    bool
+		wantDetection bool
+	}{
+		{name: "auto detected", mode: AnubisModeAuto, detected: true, wantDriver: true, wantDetection: true},
+		{name: "auto not detected", mode: AnubisModeAuto, wantDetection: true},
+		{name: "auto detection failure", mode: AnubisModeAuto, detectionErr: errors.New("detection unavailable"), wantDetection: true},
+		{name: "always", mode: AnubisModeAlways, wantDriver: true},
+		{name: "off", mode: AnubisModeOff},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			archiveStore := newTestStore(t)
+			crawler := NewCrawler(Config{TimeoutInSeconds: 30, AnubisMode: tt.mode}, archiveStore)
+
+			detectionCalled := false
+			crawler.detectAnubis = func(context.Context, string) (bool, error) {
+				detectionCalled = true
+				return tt.detected, tt.detectionErr
+			}
+
+			var capturedCmd *exec.Cmd
+			crawler.runCmd = func(cmd *exec.Cmd) error {
+				capturedCmd = cmd
+				return nil
+			}
+			t.Setenv("ARCHIVES_DIR", "")
+
+			err := crawler.Run(context.Background(), uuid.New().String(), models.Archive{
+				Name:      "Anubis Test",
+				SourceURL: "https://example.com/",
+			}, models.CrawlOptions{})
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantDetection, detectionCalled)
+			assert.NotNil(t, capturedCmd)
+
+			joinedArgs := strings.Join(capturedCmd.Args, " ")
+			if tt.wantDriver {
+				assert.Contains(t, joinedArgs, "--driver "+anubisDriverPath)
+			} else {
+				assert.NotContains(t, joinedArgs, "--driver")
+			}
+		})
+	}
 }

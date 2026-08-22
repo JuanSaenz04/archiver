@@ -24,5 +24,6 @@ The API binary listens on two ports: `1080` for the frontend and API, and `1081`
 | `ARCHIVES_DIR` | - | **Yes** | Absolute path to the directory where generated archives should be saved and where archive files are managed by the worker. |
 | `SQLITE_DIR` | `ARCHIVES_DIR` | No | Directory where the SQLite database file (`archive.db`) is stored. If omitted, it **defaults to `ARCHIVES_DIR`**. |
 | `CRAWLER_TIMEOUT`| `90` | No | Maximum duration (in seconds) allowed for the underlying `browsertrix-crawler` process to run before timing out. |
+| `ANUBIS_MODE` | `auto` | No | Anubis challenge handling: `auto` detects Anubis on each seed and enables the compatibility driver, `always` forces the driver, and `off` disables it. |
 | `CONSUMER_NAME` | `worker-<id>` | No | Unique identifier for this worker instance within the Redis consumer group. If unset, it defaults to `worker-$HOSTNAME` or a random UUID. |
 | `LOG_LEVEL` | `info` | No | Logging verbosity for structured logs. Supported values: `debug`, `info`, `warn`/`warning`, `error`. |

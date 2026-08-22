@@ -13,6 +13,7 @@ RUN --mount=type=cache,id=archiver-go-mod,target=/go/pkg/mod \
 FROM webrecorder/browsertrix-crawler:1.14.2
 
 COPY --from=builder /app/worker /usr/local/bin/worker
+COPY --from=builder /app/internal/crawler/drivers/anubis.mjs /app/drivers/anubis.mjs
 
 RUN chmod +x /usr/local/bin/worker
 
