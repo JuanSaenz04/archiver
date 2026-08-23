@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )

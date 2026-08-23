@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,10 +14,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	_ "modernc.org/sqlite"

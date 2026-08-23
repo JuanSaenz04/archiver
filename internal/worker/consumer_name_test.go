@@ -4,79 +4,53 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
-func TestGetWorkerName_ConsumerNameEnv(t *testing.T) {
-	os.Setenv("CONSUMER_NAME", "my-worker")
-	defer os.Unsetenv("CONSUMER_NAME")
-
-	got := GetWorkerName()
+func TestGetWorkerName_ConsumerName(t *testing.T) {
+	got := GetWorkerName("my-worker", "")
 	if got != "my-worker" {
 		t.Fatalf("GetWorkerName() = %q, want %q", got, "my-worker")
 	}
 }
 
 func TestGetWorkerName_ConsumerNameTakesPrecedence(t *testing.T) {
-	os.Setenv("CONSUMER_NAME", "priority-worker")
-	os.Setenv("HOSTNAME", "some-host")
-	defer os.Unsetenv("CONSUMER_NAME")
-	defer os.Unsetenv("HOSTNAME")
-
-	got := GetWorkerName()
+	got := GetWorkerName("priority-worker", "some-host")
 	if got != "priority-worker" {
 		t.Fatalf("GetWorkerName() = %q, want %q", got, "priority-worker")
 	}
 }
 
 func TestGetWorkerName_ConsumerNameWhitespace(t *testing.T) {
-	os.Setenv("CONSUMER_NAME", "  spaced  ")
-	defer os.Unsetenv("CONSUMER_NAME")
-
-	got := GetWorkerName()
+	got := GetWorkerName("  spaced  ", "")
 	if got != "spaced" {
 		t.Fatalf("GetWorkerName() = %q, want %q", got, "spaced")
 	}
 }
 
 func TestGetWorkerName_ConsumerNameEmptyFallsThrough(t *testing.T) {
-	os.Setenv("CONSUMER_NAME", "   ")
-	os.Setenv("HOSTNAME", "host123")
-	defer os.Unsetenv("CONSUMER_NAME")
-	defer os.Unsetenv("HOSTNAME")
-
-	got := GetWorkerName()
+	got := GetWorkerName("   ", "host123")
 	if got != "worker-host123" {
 		t.Fatalf("GetWorkerName() = %q, want %q", got, "worker-host123")
 	}
 }
 
-func TestGetWorkerName_HostnameEnv(t *testing.T) {
-	os.Setenv("HOSTNAME", "pod-abc")
-	defer os.Unsetenv("HOSTNAME")
-
-	got := GetWorkerName()
+func TestGetWorkerName_Hostname(t *testing.T) {
+	got := GetWorkerName("", "pod-abc")
 	if got != "worker-pod-abc" {
 		t.Fatalf("GetWorkerName() = %q, want %q", got, "worker-pod-abc")
 	}
 }
 
-func TestGetWorkerName_HostnameEnvWhitespace(t *testing.T) {
-	os.Setenv("HOSTNAME", "  pod-abc  ")
-	defer os.Unsetenv("HOSTNAME")
-
-	got := GetWorkerName()
+func TestGetWorkerName_HostnameWhitespace(t *testing.T) {
+	got := GetWorkerName("", "  pod-abc  ")
 	if got != "worker-pod-abc" {
 		t.Fatalf("GetWorkerName() = %q, want %q", got, "worker-pod-abc")
 	}
 }
 
 func TestGetWorkerName_FallbackOsHostname(t *testing.T) {
-	os.Unsetenv("CONSUMER_NAME")
-	os.Unsetenv("HOSTNAME")
-
-	got := GetWorkerName()
+	got := GetWorkerName("", "")
 	if !strings.HasPrefix(got, "worker-") {
 		t.Fatalf("GetWorkerName() = %q, want prefix %q", got, "worker-")
 	}

@@ -2,12 +2,12 @@ export const displayArchiveName = (name: string) =>
 	name.replace(/\.wacz$/i, "") || "Untitled archive";
 export const formatBytes = (bytes?: number) => {
 	if (!bytes) return "Size unavailable";
-	const units = ["B", "KB", "MB", "GB", "TB"];
+	const units = ["B", "kB", "MB", "GB", "TB"];
 	const i = Math.min(
-		Math.floor(Math.log(bytes) / Math.log(1024)),
+		Math.floor(Math.log(bytes) / Math.log(1000)),
 		units.length - 1,
 	);
-	return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: i ? 1 : 0 }).format(bytes / 1024 ** i)} ${units[i]}`;
+	return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: i ? 1 : 0 }).format(bytes / 1000 ** i)} ${units[i]}`;
 };
 export const formatDate = (value: string | Date) =>
 	new Intl.DateTimeFormat(undefined, {

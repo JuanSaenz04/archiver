@@ -3,14 +3,12 @@ package api
 import (
 	"log/slog"
 	"net"
-	"os"
 	"strings"
 
 	"github.com/labstack/echo/v5"
 )
 
-func GetIPExtractorFromEnv() echo.IPExtractor {
-	trustedProxiesEnv := os.Getenv("TRUSTED_PROXIES")
+func GetIPExtractor(trustedProxiesEnv string) echo.IPExtractor {
 	if trustedProxiesEnv == "" {
 		// No proxies defined: trust only the direct connection.
 		return echo.ExtractIPDirect()

@@ -17,19 +17,43 @@ import (
 	"github.com/JuanSaenz04/archiver/internal/store"
 )
 
-type Crawler struct {
-	timeoutInSeconds int
-	archiveStore     *store.ArchiveStore
-	collectionsDir   string
-	runCmd           func(cmd *exec.Cmd) error
+type AnubisMode string
+
+const (
+	AnubisModeAuto   AnubisMode = "auto"
+	AnubisModeAlways AnubisMode = "always"
+	AnubisModeOff    AnubisMode = "off"
+)
+
+type Config struct {
+	TimeoutInSeconds int
+	AnubisMode       AnubisMode
+	ArchivesDir      string
 }
 
-func NewCrawler(timeoutInSeconds int, archiveStore *store.ArchiveStore) *Crawler {
+type Crawler struct {
+	timeoutInSeconds int
+	anubisMode       AnubisMode
+	archiveStore     *store.ArchiveStore
+	archivesDir      string
+	collectionsDir   string
+	runCmd           func(cmd *exec.Cmd) error
+	detectAnubis     func(context.Context, string) (bool, error)
+}
+
+func NewCrawler(config Config, archiveStore *store.ArchiveStore) *Crawler {
+	if config.AnubisMode == "" {
+		config.AnubisMode = AnubisModeAuto
+	}
+
 	return &Crawler{
-		timeoutInSeconds: timeoutInSeconds,
+		timeoutInSeconds: config.TimeoutInSeconds,
+		anubisMode:       config.AnubisMode,
 		archiveStore:     archiveStore,
+		archivesDir:      config.ArchivesDir,
 		collectionsDir:   "collections",
 		runCmd:           func(cmd *exec.Cmd) error { return cmd.Run() },
+		detectAnubis:     newAnubisDetector(),
 	}
 }
 
@@ -43,8 +67,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		"archive_name", archive.Name,
 	)
 
-	cmd := exec.CommandContext(
-		ctx,
+	args := []string{
 		"xvfb-run", "--auto-servernum", "--server-args=-screen 0 1280x1024x24",
 		"node", "/app/dist/main.js", "crawl",
 		"--url", archive.SourceURL,
@@ -55,13 +78,19 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		"--workers", "2",
 		"--scopeType", string(options.ScopeType),
 		"--limit", strconv.Itoa(options.PageLimit),
-		"--sizeLimit", strconv.Itoa(options.SizeLimit*1024*1024),
+		"--sizeLimit", strconv.Itoa(options.SizeLimit * 1024 * 1024),
 		"--depth", strconv.Itoa(options.Depth),
 		"--timeout", strconv.Itoa(crawler.timeoutInSeconds),
 		"--postLoadDelay", "10",
 		"--pageExtraDelay", "10",
 		"--behaviorTimeout", "120",
-	)
+	}
+
+	if crawler.useAnubisDriver(ctx, archive.SourceURL) {
+		args = append(args, "--driver", anubisDriverPath)
+	}
+
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -71,7 +100,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		return err
 	}
 
-	archivesDir := os.Getenv("ARCHIVES_DIR")
+	archivesDir := crawler.archivesDir
 	if archivesDir == "" {
 		slog.Warn("ARCHIVES_DIR not set, archive will not be persisted", "job_id", jobID, "url", archive.SourceURL)
 		return nil
@@ -131,6 +160,31 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	)
 
 	return nil
+}
+
+func (crawler *Crawler) useAnubisDriver(ctx context.Context, targetURL string) bool {
+	switch crawler.anubisMode {
+	case AnubisModeAlways:
+		slog.Info("Anubis driver enabled", "url", targetURL, "mode", crawler.anubisMode)
+		return true
+	case AnubisModeOff:
+		return false
+	case AnubisModeAuto:
+		detected, err := crawler.detectAnubis(ctx, targetURL)
+		if err != nil {
+			slog.Warn("Anubis detection failed, continuing without driver", "url", targetURL, "error", err)
+			return false
+		}
+		if detected {
+			slog.Info("Anubis detected, enabling driver", "url", targetURL)
+		} else {
+			slog.Info("Anubis not detected, continuing without driver", "url", targetURL)
+		}
+		return detected
+	default:
+		slog.Warn("unknown Anubis mode, continuing without driver", "mode", crawler.anubisMode)
+		return false
+	}
 }
 
 func createArchiveFile(dir, filename string) (*os.File, string, error) {

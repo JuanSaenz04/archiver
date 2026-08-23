@@ -2,7 +2,7 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

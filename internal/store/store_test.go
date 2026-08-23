@@ -8,15 +8,15 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 )
 
 func newTestStore(t *testing.T) *ArchiveStore {
 	t.Helper()
 
-	dbPath := "file:" + uuid.NewString() + "?mode=memory&cache=shared"
+	dbPath := "file:" + uuid.New().String() + "?mode=memory&cache=shared"
 	s, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -36,6 +36,39 @@ func newTestStore(t *testing.T) *ArchiveStore {
 	}
 
 	return s
+}
+
+func TestUUIDSQLRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	want := uuid.MustParse("123e4567-e89b-42d3-a456-426614174000")
+
+	if err := s.Insert(ctx, models.Archive{
+		ID:       want,
+		Name:     "UUID round trip",
+		Filename: "uuid-round-trip.wacz",
+	}); err != nil {
+		t.Fatalf("insert archive: %v", err)
+	}
+
+	var storedID, storageClass string
+	if err := s.db.QueryRowContext(ctx, "SELECT id, typeof(id) FROM archives WHERE name = ?;", "UUID round trip").Scan(&storedID, &storageClass); err != nil {
+		t.Fatalf("read stored UUID: %v", err)
+	}
+	if storedID != want.String() {
+		t.Fatalf("stored UUID mismatch: got %q, want %q", storedID, want.String())
+	}
+	if storageClass != "text" {
+		t.Fatalf("UUID storage class mismatch: got %q, want text", storageClass)
+	}
+
+	var got uuid.UUID
+	if err := s.db.QueryRowContext(ctx, "SELECT id FROM archives WHERE id = ?;", want).Scan(&got); err != nil {
+		t.Fatalf("query and scan UUID: %v", err)
+	}
+	if got != want {
+		t.Fatalf("scanned UUID mismatch: got %s, want %s", got, want)
+	}
 }
 
 func TestInsertAndList(t *testing.T) {

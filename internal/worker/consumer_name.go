@@ -3,16 +3,15 @@ package worker
 import (
 	"os"
 	"strings"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
-func GetWorkerName() string {
-	if name := strings.TrimSpace(os.Getenv("CONSUMER_NAME")); name != "" {
+func GetWorkerName(configuredName, configuredHostname string) string {
+	if name := strings.TrimSpace(configuredName); name != "" {
 		return name
 	}
 
-	if hostname := strings.TrimSpace(os.Getenv("HOSTNAME")); hostname != "" {
+	if hostname := strings.TrimSpace(configuredHostname); hostname != "" {
 		return "worker-" + hostname
 	}
 
@@ -23,5 +22,5 @@ func GetWorkerName() string {
 		}
 	}
 
-	return "worker-" + uuid.NewString()
+	return "worker-" + uuid.New().String()
 }

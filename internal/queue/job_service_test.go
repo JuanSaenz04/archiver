@@ -1,19 +1,20 @@
 package queue
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestEnqueueCrawl_Success(t *testing.T) {
+func TestJobService_EnqueueCrawl_Success(t *testing.T) {
 	// Setup miniredis and the client via the package-level helper
 	_, rdb, ctx := newTestRedis(t)
+	service := NewJobService(rdb)
 
 	request := models.CrawlRequest{
 		URL:         "https://example.com/test-page",
@@ -27,12 +28,12 @@ func TestEnqueueCrawl_Success(t *testing.T) {
 	}
 
 	// Act: Enqueue the crawl job
-	jobID, err := EnqueueCrawl(ctx, rdb, request)
+	jobID, err := service.EnqueueCrawl(ctx, request)
 
 	// Assertions
 	assert.NoError(t, err)
 	assert.NotNil(t, jobID)
-	assert.NotEqual(t, uuid.Nil, *jobID)
+	assert.NotEqual(t, uuid.Nil(), *jobID)
 
 	// 1. Verify that the job details are stored in a Hash at "job:<jobID>"
 	jobKey := "job:" + jobID.String()
@@ -85,8 +86,9 @@ func TestEnqueueCrawl_Success(t *testing.T) {
 	assert.Equal(t, request.Tags, crawlMsg.Archive.Tags)
 }
 
-func TestEnqueueCrawl_RedisHSetError(t *testing.T) {
+func TestJobService_EnqueueCrawl_RedisError(t *testing.T) {
 	_, rdb, ctx := newTestRedis(t)
+	service := NewJobService(rdb)
 
 	// Close the connection client to simulate a connection/Redis error
 	rdb.Close()
@@ -95,7 +97,75 @@ func TestEnqueueCrawl_RedisHSetError(t *testing.T) {
 		URL: "https://example.com/fail-test",
 	}
 
-	jobID, err := EnqueueCrawl(ctx, rdb, request)
+	jobID, err := service.EnqueueCrawl(ctx, request)
 	assert.Error(t, err)
 	assert.Nil(t, jobID)
+}
+
+func TestJobService_GetAllJobs_Empty(t *testing.T) {
+	_, rdb, ctx := newTestRedis(t)
+	service := NewJobService(rdb)
+
+	jobs, err := service.GetAllJobs(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, jobs)
+	assert.Empty(t, jobs, "Should return an empty slice when there are no jobs in the index")
+}
+
+func TestJobService_GetAllJobs_Success(t *testing.T) {
+	mr, rdb, ctx := newTestRedis(t)
+	service := NewJobService(rdb)
+
+	jobID1 := uuid.New()
+	jobID2 := uuid.New()
+
+	mr.SAdd("jobs:index", jobID1.String())
+	mr.SAdd("jobs:index", jobID2.String())
+	mr.HSet("job:"+jobID1.String(), "url", "https://example.com/1", "status", "pending", "created_at", "2026-06-19T21:00:00Z")
+	mr.HSet("job:"+jobID2.String(), "url", "https://example.com/2", "status", "completed", "created_at", "2026-06-19T22:00:00Z")
+
+	jobs, err := service.GetAllJobs(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, jobs, 2)
+
+	jobMap := make(map[uuid.UUID]models.Job)
+	for _, job := range jobs {
+		jobMap[job.ID] = job
+	}
+
+	assert.Equal(t, "https://example.com/1", jobMap[jobID1].URL)
+	assert.Equal(t, "pending", jobMap[jobID1].Status)
+	assert.Equal(t, "2026-06-19T21:00:00Z", jobMap[jobID1].CreatedAt)
+	assert.Equal(t, "https://example.com/2", jobMap[jobID2].URL)
+	assert.Equal(t, "completed", jobMap[jobID2].Status)
+	assert.Equal(t, "2026-06-19T22:00:00Z", jobMap[jobID2].CreatedAt)
+}
+
+func TestJobService_GetAllJobs_MixedMalformedAndMissing(t *testing.T) {
+	mr, rdb, ctx := newTestRedis(t)
+	service := NewJobService(rdb)
+
+	validJobID := uuid.New()
+	mr.SAdd("jobs:index", validJobID.String())
+	mr.HSet("job:"+validJobID.String(), "url", "https://example.com/valid", "status", "pending", "created_at", "2026-06-19T23:00:00Z")
+	mr.SAdd("jobs:index", uuid.New().String())
+	mr.SAdd("jobs:index", "this-is-not-a-valid-uuid")
+
+	jobs, err := service.GetAllJobs(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, jobs, 1)
+	assert.Equal(t, validJobID, jobs[0].ID)
+	assert.Equal(t, "https://example.com/valid", jobs[0].URL)
+	assert.Equal(t, "pending", jobs[0].Status)
+}
+
+func TestJobService_GetAllJobs_RedisError(t *testing.T) {
+	_, rdb, ctx := newTestRedis(t)
+	service := NewJobService(rdb)
+
+	rdb.Close()
+
+	jobs, err := service.GetAllJobs(ctx)
+	assert.Error(t, err)
+	assert.Nil(t, jobs)
 }

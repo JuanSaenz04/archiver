@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,7 +31,7 @@ func TestHandleNewJob(t *testing.T) {
 
 	// 3. Initialize Handler
 	var archiveStore *store.ArchiveStore
-	handler := NewHandler(rdb, t.TempDir(), archiveStore)
+	handler := NewHandler(queue.NewJobService(rdb), t.TempDir(), archiveStore)
 	e := echo.New()
 
 	t.Run("Success", func(t *testing.T) {
@@ -105,7 +105,7 @@ func TestHandleGetJobs(t *testing.T) {
 	})
 
 	var archiveStore *store.ArchiveStore
-	handler := NewHandler(rdb, t.TempDir(), archiveStore)
+	handler := NewHandler(queue.NewJobService(rdb), t.TempDir(), archiveStore)
 	e := echo.New()
 
 	t.Run("Empty", func(t *testing.T) {
