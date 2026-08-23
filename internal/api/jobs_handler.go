@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
-	"github.com/JuanSaenz04/archiver/internal/queue"
 	"github.com/labstack/echo/v5"
 )
 
@@ -16,7 +15,7 @@ func (handler *Handler) HandleNewJob(c *echo.Context) error {
 		return respondWithError(http.StatusBadRequest, "Bad request", c)
 	}
 
-	jobId, err := queue.EnqueueCrawl(c.Request().Context(), handler.rdb, *job)
+	jobId, err := handler.jobs.EnqueueCrawl(c.Request().Context(), *job)
 	if err != nil {
 		slog.Error("failed to enqueue crawl job", "url", job.URL, "error", err)
 		return respondWithError(http.StatusInternalServerError, "Failed to queue job", c)
@@ -31,7 +30,7 @@ func (handler *Handler) HandleNewJob(c *echo.Context) error {
 }
 
 func (handler *Handler) HandleGetJobs(c *echo.Context) error {
-	jobs, err := handler.jobRepo.GetAllJobs(c.Request().Context())
+	jobs, err := handler.jobs.GetAllJobs(c.Request().Context())
 
 	if err != nil {
 		slog.Error("failed to list jobs", "error", err)

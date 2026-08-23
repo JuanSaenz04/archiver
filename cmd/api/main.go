@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/JuanSaenz04/archiver/internal/api"
+	"github.com/JuanSaenz04/archiver/internal/queue"
 	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/labstack/echo/v5"
 	"github.com/redis/go-redis/v9"
@@ -68,7 +69,8 @@ func run() error {
 		return fmt.Errorf("sync sqlite database from disk: %w", err)
 	}
 
-	handler := api.NewHandler(rdb, archivesDir, archiveStore)
+	jobs := queue.NewJobService(rdb)
+	handler := api.NewHandler(jobs, archivesDir, archiveStore)
 	routeConfig := api.RouteConfig{
 		AppPublicURL:    cfg.AppPublicURL,
 		ReplayPublicURL: cfg.ReplayPublicURL,
