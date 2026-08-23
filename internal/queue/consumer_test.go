@@ -130,8 +130,8 @@ func TestStartWorker_ProcessesExistingJobWhenGroupDoesNotExistYet(t *testing.T) 
 	if !waitForProcessorCall(called, 2*time.Second) {
 		t.Fatal("processor was not called for existing job")
 	}
-	status := rdb.HGet(ctx, "job:"+jobID, "status").Val()
-	assert.Equal(t, "completed", status)
+	waitForJobStatus(t, ctx, rdb, jobID, "completed", 2*time.Second)
+	waitForNoPending(t, ctx, rdb, 2*time.Second)
 }
 
 func TestStartWorker_ProcessesValidMessageAndMarksCompleted(t *testing.T) {
