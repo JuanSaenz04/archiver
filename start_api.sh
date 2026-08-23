@@ -6,6 +6,6 @@ export APP_PUBLIC_URL="${APP_PUBLIC_URL:-http://localhost:1080}"
 export REPLAY_PUBLIC_URL="${REPLAY_PUBLIC_URL:-http://localhost:1081}"
 
 
-go build -o api.out ./cmd/api/main.go
+go build -o api.out ./cmd/api
 
 ./api.out
