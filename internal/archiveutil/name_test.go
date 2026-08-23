@@ -12,7 +12,9 @@ func TestNormalizeArchiveName(t *testing.T) {
 		{name: "adds extension and replaces spaces", input: "OpenWRT Anubis test3", want: "OpenWRT-Anubis-test3.wacz", wantOK: true},
 		{name: "preserves existing extension", input: "archive.wacz", want: "archive.wacz", wantOK: true},
 		{name: "preserves uppercase extension", input: "archive.WACZ", want: "archive.WACZ", wantOK: true},
-		{name: "drops parent directories", input: "nested/archive name", want: "archive-name.wacz", wantOK: true},
+		{name: "replaces forward slashes", input: "nested/archive name", want: "nested-archive-name.wacz", wantOK: true},
+		{name: "replaces backslashes", input: `nested\archive name`, want: "nested-archive-name.wacz", wantOK: true},
+		{name: "trims surrounding whitespace", input: "  archive name  ", want: "archive-name.wacz", wantOK: true},
 		{name: "rejects empty name", input: "   ", wantOK: false},
 	}
 
