@@ -2,7 +2,7 @@ package queue
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"time"
 	"uuid"
