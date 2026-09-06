@@ -3,21 +3,24 @@ package queue
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
+	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/redis/go-redis/v9"
 )
 
 const (
-	streamName    = "crawl_stream"
-	groupName     = "worker_group"
-	retryInterval = 5 * time.Second
+	streamName          = "crawl_stream"
+	groupName           = "worker_group"
+	retryInterval       = 5 * time.Second
+	reclaimInterval     = 10 * time.Second
+	finalizationTimeout = 30 * time.Second
 )
 
-// Processor is a function that processes a job.
 type Processor func(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error
 
 func ensureStreamAndGroup(ctx context.Context, rdb *redis.Client) error {
@@ -28,108 +31,157 @@ func ensureStreamAndGroup(ctx context.Context, rdb *redis.Client) error {
 	return nil
 }
 
-// StartWorker starts the worker loop to consume jobs from Redis.
-// On any error it retries after retryInterval indefinitely.
-func StartWorker(ctx context.Context, rdb *redis.Client, consumerName string, process Processor) error {
-	if err := ensureStreamAndGroup(ctx, rdb); err != nil {
-		return fmt.Errorf("create consumer group on startup: %w", err)
+// StartWorker recovers abandoned deliveries between jobs. jobTimeout bounds the
+// entire processor; the additional reclaim margin allows shutdown and finalization.
+func StartWorker(ctx context.Context, rdb *redis.Client, consumerName string, jobTimeout time.Duration, process Processor) error {
+	if jobTimeout <= 0 {
+		return fmt.Errorf("job timeout must be positive")
 	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		streams, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    groupName,
-			Consumer: consumerName,
-			Streams:  []string{streamName, ">"},
-			Count:    1,
-			Block:    1 * time.Second,
-		}).Result()
-
-		if err != nil {
-			if err == context.Canceled {
-				return nil
-			}
-			if err == redis.Nil {
-				continue
-			}
-
-			// Stream or consumer group is gone. Try to re-create it.
-			if redis.HasErrorPrefix(err, "NOGROUP") {
-				slog.Warn("redis stream or consumer group missing, attempting to recreate", "stream", streamName, "group", groupName, "error", err)
-				if recreateErr := ensureStreamAndGroup(ctx, rdb); recreateErr != nil {
-					slog.Error("failed to recreate redis stream or consumer group", "stream", streamName, "group", groupName, "error", recreateErr)
-				} else {
-					slog.Info("redis stream and consumer group recreated", "stream", streamName, "group", groupName)
-					continue
-				}
-			} else {
-				slog.Error("failed to read redis stream", "stream", streamName, "group", groupName, "consumer", consumerName, "error", err)
-			}
-
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(retryInterval):
+	cursor := "0-0"
+	var nextClaim time.Time
+	for ctx.Err() == nil {
+		if err := ensureStreamAndGroup(ctx, rdb); err != nil {
+			slog.Error("create consumer group", "error", err)
+			if !waitRetry(ctx, retryInterval) {
+				break
 			}
 			continue
 		}
-
-		for _, stream := range streams {
-			for _, message := range stream.Messages {
-				jobID, ok := message.Values["job_id"].(string)
-				if !ok {
-					slog.Warn("redis message missing valid job_id", "message_id", message.ID)
-					if err := rdb.XAck(ctx, streamName, groupName, message.ID).Err(); err != nil {
-						slog.Error("failed to acknowledge malformed redis message", "message_id", message.ID, "error", err)
-					}
-					continue
+		for ctx.Err() == nil {
+			var messages []redis.XMessage
+			var err error
+			if !time.Now().Before(nextClaim) {
+				var nextCursor string
+				messages, nextCursor, err = rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+					Stream: streamName, Group: groupName, Consumer: consumerName,
+					MinIdle: jobTimeout + 2*time.Minute, Start: cursor, Count: 1,
+				}).Result()
+				if err == nil {
+					cursor = nextCursor
 				}
-				payloadMsg, ok := message.Values["payload"].(string)
-				if !ok {
-					slog.Warn("redis message missing valid payload", "job_id", jobID, "message_id", message.ID)
-					if err := rdb.XAck(ctx, streamName, groupName, message.ID).Err(); err != nil {
-						slog.Error("failed to acknowledge malformed redis message", "job_id", jobID, "message_id", message.ID, "error", err)
-					}
-					continue
+				nextClaim = time.Now().Add(reclaimInterval)
+			}
+			if err == nil && len(messages) == 0 {
+				var streams []redis.XStream
+				streams, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+					Group: groupName, Consumer: consumerName, Streams: []string{streamName, ">"}, Count: 1, Block: time.Second,
+				}).Result()
+				for _, stream := range streams {
+					messages = append(messages, stream.Messages...)
 				}
-				var msg CrawlMessage
-				if err := json.Unmarshal([]byte(payloadMsg), &msg); err != nil {
-					slog.Warn("failed to unmarshal crawl message", "job_id", jobID, "message_id", message.ID, "error", err)
-					if err := rdb.XAck(ctx, streamName, groupName, message.ID).Err(); err != nil {
-						slog.Error("failed to acknowledge malformed redis message", "job_id", jobID, "message_id", message.ID, "error", err)
-					}
-					continue
+			}
+			if errors.Is(err, redis.Nil) {
+				continue
+			}
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil
 				}
-
-				slog.Info("processing crawl job", "job_id", jobID, "url", msg.Archive.SourceURL)
-
-				if err := rdb.HSet(ctx, "job:"+jobID, "status", "running").Err(); err != nil {
-					slog.Warn("failed to update job status", "job_id", jobID, "status", "running", "error", err)
+				slog.Error("read crawl stream", "consumer", consumerName, "error", err)
+				if redis.HasErrorPrefix(err, "NOGROUP") {
+					cursor = "0-0"
+					nextClaim = time.Time{}
+					break
 				}
-
-				err := process(ctx, jobID, msg.Archive, msg.Options)
-
-				if err != nil {
-					slog.Error("crawl job failed", "job_id", jobID, "url", msg.Archive.SourceURL, "error", err)
-					if statusErr := rdb.HSet(ctx, "job:"+jobID, "status", "failed", "error", err.Error()).Err(); statusErr != nil {
-						slog.Warn("failed to update job status", "job_id", jobID, "status", "failed", "error", statusErr)
-					}
-				} else {
-					slog.Info("crawl job completed", "job_id", jobID, "url", msg.Archive.SourceURL)
-					if statusErr := rdb.HSet(ctx, "job:"+jobID, "status", "completed").Err(); statusErr != nil {
-						slog.Warn("failed to update job status", "job_id", jobID, "status", "completed", "error", statusErr)
-					}
+				if !waitRetry(ctx, retryInterval) {
+					return nil
 				}
-
-				if err := rdb.XAck(ctx, streamName, groupName, message.ID).Err(); err != nil {
-					slog.Error("failed to acknowledge redis message", "job_id", jobID, "message_id", message.ID, "error", err)
+				continue
+			}
+			for _, message := range messages {
+				if err := handleMessage(ctx, rdb, message, jobTimeout, process); err != nil && ctx.Err() == nil {
+					slog.Error("job left pending for recovery", "message_id", message.ID, "error", err)
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func handleMessage(ctx context.Context, rdb *redis.Client, message redis.XMessage, jobTimeout time.Duration, process Processor) error {
+	jobID, _ := message.Values["job_id"].(string)
+	if _, err := uuid.Parse(jobID); err != nil {
+		slog.Warn("invalid job ID", "message_id", message.ID)
+		return finalize(ctx, rdb, message.ID, "", "", "")
+	}
+	// A previous delivery may have saved its result but lost the acknowledgment.
+	status, err := rdb.HGet(ctx, "job:"+jobID, "status").Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	if status == "completed" || status == "failed" {
+		return finalize(ctx, rdb, message.ID, "", "", "")
+	}
+	payload, _ := message.Values["payload"].(string)
+	var msg CrawlMessage
+	if err := json.Unmarshal([]byte(payload), &msg); err != nil || msg.JobID != jobID || msg.Archive.ID.String() != jobID || msg.Archive.SourceURL == "" {
+		return finalize(ctx, rdb, message.ID, jobID, "failed", "invalid crawl message")
+	}
+	if err := rdb.HSet(ctx, "job:"+jobID, "status", "running", "error", "").Err(); err != nil {
+		return err
+	}
+	jobCtx, cancel := context.WithTimeout(ctx, jobTimeout)
+	err = process(jobCtx, jobID, msg.Archive, msg.Options)
+	jobErr := jobCtx.Err()
+	cancel()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err == nil {
+		err = jobErr
+	}
+	status, detail := "completed", ""
+	if err != nil {
+		status, detail = "failed", err.Error()
+		slog.Error("crawl job failed", "job_id", jobID, "error", err)
+	} else {
+		slog.Info("crawl job completed", "job_id", jobID)
+	}
+	return finalize(ctx, rdb, message.ID, jobID, status, detail)
+}
+
+func finalize(ctx context.Context, rdb *redis.Client, messageID, jobID, status, detail string) error {
+	ctx, cancel := context.WithTimeout(ctx, finalizationTimeout)
+	defer cancel()
+	if jobID != "" {
+		if err := retryRedis(ctx, func() error {
+			return rdb.HSet(ctx, "job:"+jobID, "status", status, "error", detail).Err()
+		}); err != nil {
+			return err
+		}
+	}
+	if err := retryRedis(ctx, func() error { return rdb.XAck(ctx, streamName, groupName, messageID).Err() }); err != nil {
+		return err
+	}
+	// This stream has one consumer group. Delete only acknowledged entries;
+	// trimming by length could discard jobs that have not finished yet.
+	if err := retryRedis(ctx, func() error { return rdb.XDel(ctx, streamName, messageID).Err() }); err != nil {
+		slog.Warn("acknowledged stream entry could not be deleted", "message_id", messageID, "error", err)
+	}
+	return nil
+}
+
+func retryRedis(ctx context.Context, operation func() error) error {
+	for ctx.Err() == nil {
+		if err := operation(); err == nil {
+			return nil
+		} else {
+			slog.Warn("retrying job finalization", "error", err)
+		}
+		if !waitRetry(ctx, retryInterval) {
+			break
+		}
+	}
+	return ctx.Err()
+}
+
+func waitRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }

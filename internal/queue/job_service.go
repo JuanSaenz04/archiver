@@ -101,6 +101,7 @@ func (service *JobService) GetAllJobs(ctx context.Context) ([]models.Job, error)
 			ID:        uid,
 			URL:       result["url"],
 			Status:    result["status"],
+			Error:     result["error"],
 			CreatedAt: result["created_at"],
 		})
 	}

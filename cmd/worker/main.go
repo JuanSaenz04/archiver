@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/crawler"
 	"github.com/JuanSaenz04/archiver/internal/queue"
@@ -65,9 +66,9 @@ func run() error {
 	}
 	crawler := crawler.NewCrawler(crawlerConfig, archiveStore)
 
-	slog.Info("starting worker", "timeout_seconds", cfg.CrawlerTimeout, "anubis_mode", cfg.AnubisMode, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
+	slog.Info("starting worker", "timeout_seconds", cfg.CrawlerTimeout, "job_timeout_seconds", cfg.JobTimeout, "anubis_mode", cfg.AnubisMode, "archives_dir", archivesDir, "sqlite_dir", sqliteDir)
 
-	if err := queue.StartWorker(ctx, rdb, cfg.ConsumerName, crawler.Run); err != nil {
+	if err := queue.StartWorker(ctx, rdb, cfg.ConsumerName, time.Duration(cfg.JobTimeout)*time.Second, crawler.Run); err != nil {
 		return fmt.Errorf("start worker: %w", err)
 	}
 

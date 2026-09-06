@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/archiveutil"
 	"github.com/JuanSaenz04/archiver/internal/models"
@@ -52,13 +53,37 @@ func NewCrawler(config Config, archiveStore *store.ArchiveStore) *Crawler {
 		archiveStore:     archiveStore,
 		archivesDir:      config.ArchivesDir,
 		collectionsDir:   "collections",
-		runCmd:           func(cmd *exec.Cmd) error { return cmd.Run() },
+		runCmd:           func(cmd *exec.Cmd) error { return runProcess(cmd, 10*time.Second) },
 		detectAnubis:     newAnubisDetector(),
 	}
 }
 
 // Run executes the crawler for a specific job.
 func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error {
+	if crawler.archivesDir != "" {
+		for {
+			filename, err := crawler.archiveStore.GetFilename(ctx, archive.ID)
+			if errors.Is(err, store.ErrArchiveNotFound) {
+				break
+			}
+			if err == nil {
+				info, statErr := os.Stat(filepath.Join(crawler.archivesDir, filename))
+				if statErr == nil && info.Mode().IsRegular() {
+					return nil
+				}
+				if statErr == nil {
+					return fmt.Errorf("existing archive is not a regular file")
+				}
+				err = statErr
+			}
+			slog.Warn("cannot verify existing archive; retrying", "job_id", jobID, "error", err)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}
 	setDefaultValuesIfEmpty(&options)
 
 	slog.Info("starting crawl",
@@ -135,7 +160,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		}
 	}()
 
-	size, err := io.Copy(dst, src)
+	size, err := io.Copy(dst, contextReader{ctx: ctx, reader: src})
 	if err != nil {
 		return fmt.Errorf("failed to copy wacz: %w", err)
 	}

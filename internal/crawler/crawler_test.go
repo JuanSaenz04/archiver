@@ -324,3 +324,14 @@ func TestCrawlerRun_AnubisDriverModes(t *testing.T) {
 		})
 	}
 }
+
+func TestCrawlerRun_ExistingArchiveSkipsCrawl(t *testing.T) {
+	s := newTestStore(t)
+	dir := t.TempDir()
+	a := models.Archive{ID: uuid.New(), Name: "saved", Filename: "saved.wacz"}
+	assert.NoError(t, s.Insert(context.Background(), a))
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, a.Filename), []byte("saved"), 0644))
+	c := NewCrawler(Config{ArchivesDir: dir, AnubisMode: AnubisModeOff}, s)
+	c.runCmd = func(*exec.Cmd) error { t.Fatal("existing archive crawled again"); return nil }
+	assert.NoError(t, c.Run(context.Background(), a.ID.String(), a, models.CrawlOptions{}))
+}
