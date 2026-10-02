@@ -16,9 +16,14 @@ import (
 const (
 	streamName          = "crawl_stream"
 	groupName           = "worker_group"
-	retryInterval       = 5 * time.Second
 	reclaimInterval     = 10 * time.Second
 	finalizationTimeout = 30 * time.Second
+)
+
+// Variables so tests can shorten them.
+var (
+	retryInterval = 5 * time.Second
+	readBlock     = time.Second
 )
 
 type Processor func(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error
@@ -64,7 +69,7 @@ func StartWorker(ctx context.Context, rdb *redis.Client, consumerName string, jo
 			if err == nil && len(messages) == 0 {
 				var streams []redis.XStream
 				streams, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-					Group: groupName, Consumer: consumerName, Streams: []string{streamName, ">"}, Count: 1, Block: time.Second,
+					Group: groupName, Consumer: consumerName, Streams: []string{streamName, ">"}, Count: 1, Block: readBlock,
 				}).Result()
 				for _, stream := range streams {
 					messages = append(messages, stream.Messages...)

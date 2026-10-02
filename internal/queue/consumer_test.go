@@ -247,10 +247,8 @@ func TestStartWorker_AcksMalformedMessagesWithoutCallingProcessor(t *testing.T) 
 
 			enqueueMessage(t, ctx, rdb, tc.values)
 
-			didCall := waitForProcessorCall(processorCalled, 2*time.Second)
-			assert.False(t, didCall, "processor should not be called for malformed message")
-
 			waitForNoPending(t, ctx, rdb, 2*time.Second)
+			assert.Empty(t, processorCalled, "processor should not be called for malformed message")
 		})
 	}
 }
@@ -277,10 +275,8 @@ func TestStartWorker_AcksInvalidJSONPayloadWithoutCallingProcessor(t *testing.T)
 		"payload": "{invalid json",
 	})
 
-	didCall := waitForProcessorCall(processorCalled, 2*time.Second)
-	assert.False(t, didCall, "processor should not be called for invalid JSON payload")
-
 	waitForNoPending(t, ctx, rdb, 2*time.Second)
+	assert.Empty(t, processorCalled, "processor should not be called for invalid JSON payload")
 }
 
 func TestStartWorker_StopsWhenContextIsCanceled(t *testing.T) {
