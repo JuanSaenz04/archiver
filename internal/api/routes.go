@@ -26,7 +26,9 @@ func (handler *Handler) SetMainRoutes(e *echo.Echo, config RouteConfig) {
 }
 
 func (handler *Handler) setMainRoutes(e *echo.Echo, config RouteConfig, dist fs.FS) {
-	e.Use(middleware.Gzip())
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{Skipper: func(c *echo.Context) bool {
+		return strings.HasPrefix(c.Request().URL.Path, "/api/jobs/") && strings.HasSuffix(c.Request().URL.Path, "/logs")
+	}}))
 
 	apiGroup := e.Group("/api")
 	apiGroup.Use(requestLogger())
@@ -40,6 +42,7 @@ func (handler *Handler) setMainRoutes(e *echo.Echo, config RouteConfig, dist fs.
 	})
 	apiGroup.POST("/jobs", handler.HandleNewJob)
 	apiGroup.GET("/jobs", handler.HandleGetJobs)
+	apiGroup.GET("/jobs/:jobId/logs", handler.HandleJobLogs)
 	apiGroup.GET("/archives", handler.HandleGetArchives)
 	apiGroup.GET("/archives/tags", handler.HandleGetArchiveTags)
 	apiGroup.DELETE("/archives/:archiveId", handler.HandleDeleteArchive)

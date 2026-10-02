@@ -7,6 +7,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/JuanSaenz04/archiver/internal/joblogs"
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/redis/go-redis/v9"
 )
@@ -18,6 +19,8 @@ type JobService struct {
 func NewJobService(rdb *redis.Client) *JobService {
 	return &JobService{rdb: rdb}
 }
+
+func (service *JobService) Logs() *joblogs.Store { return joblogs.NewStore(service.rdb) }
 
 func (service *JobService) EnqueueCrawl(ctx context.Context, request models.CrawlRequest) (*uuid.UUID, error) {
 	jobID := uuid.New()

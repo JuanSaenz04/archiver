@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/crawler"
+	"github.com/JuanSaenz04/archiver/internal/joblogs"
 	"github.com/JuanSaenz04/archiver/internal/queue"
 	"github.com/JuanSaenz04/archiver/internal/store"
 	"github.com/redis/go-redis/v9"
@@ -59,7 +60,15 @@ func run() error {
 		return fmt.Errorf("run sqlite migrations: %w", err)
 	}
 
+	logOptions := *cfg.RedisOptions
+	logOptions.ContextTimeoutEnabled = true
+	logOptions.MaxRetries = -1
+	logOptions.DialTimeout = 500 * time.Millisecond
+	logOptions.PoolTimeout = 500 * time.Millisecond
+	logClient := redis.NewClient(&logOptions)
+	defer logClient.Close()
 	crawlerConfig := crawler.Config{
+		Logs:             joblogs.NewStore(logClient),
 		TimeoutInSeconds: cfg.CrawlerTimeout,
 		AnubisMode:       cfg.AnubisMode,
 		ArchivesDir:      cfg.ArchivesDir,
