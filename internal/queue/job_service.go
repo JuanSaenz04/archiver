@@ -44,7 +44,7 @@ func (service *JobService) EnqueueCrawl(ctx context.Context, request models.Craw
 	}
 
 	_, err = service.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.HSet(ctx, "job:"+jobID.String(), map[string]interface{}{
+		pipe.HSet(ctx, "job:"+jobID.String(), map[string]any{
 			"url":        request.URL,
 			"status":     "pending",
 			"created_at": time.Now().Format(time.RFC3339),
@@ -52,7 +52,7 @@ func (service *JobService) EnqueueCrawl(ctx context.Context, request models.Craw
 		pipe.SAdd(ctx, "jobs:index", jobID.String())
 		pipe.XAdd(ctx, &redis.XAddArgs{
 			Stream: "crawl_stream",
-			Values: map[string]interface{}{
+			Values: map[string]any{
 				"job_id":  jobID.String(),
 				"payload": string(msgBytes),
 			},

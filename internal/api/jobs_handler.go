@@ -23,7 +23,7 @@ func (handler *Handler) HandleNewJob(c *echo.Context) error {
 
 	slog.Info("crawl job enqueued", "job_id", jobId.String(), "url", job.URL)
 
-	return c.JSON(http.StatusCreated, map[string]interface{}{
+	return c.JSON(http.StatusCreated, map[string]any{
 		"job_id": jobId,
 		"status": "pending",
 	})

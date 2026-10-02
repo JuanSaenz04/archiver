@@ -115,6 +115,7 @@ func TestLogEndpointLiveAndDisconnect(t *testing.T) {
 			break
 		}
 	}
+	require.NoError(t, scanner.Err())
 	require.True(t, found)
 	res.Body.Close()
 	cancel()
