@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/JuanSaenz04/archiver/internal/archiveutil"
+	"github.com/JuanSaenz04/archiver/internal/joblogs"
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/JuanSaenz04/archiver/internal/store"
 )
@@ -26,12 +28,14 @@ const (
 )
 
 type Config struct {
+	Logs             *joblogs.Store
 	TimeoutInSeconds int
 	AnubisMode       AnubisMode
 	ArchivesDir      string
 }
 
 type Crawler struct {
+	logs             *joblogs.Store
 	timeoutInSeconds int
 	anubisMode       AnubisMode
 	archiveStore     *store.ArchiveStore
@@ -47,18 +51,59 @@ func NewCrawler(config Config, archiveStore *store.ArchiveStore) *Crawler {
 	}
 
 	return &Crawler{
+		logs:             config.Logs,
 		timeoutInSeconds: config.TimeoutInSeconds,
 		anubisMode:       config.AnubisMode,
 		archiveStore:     archiveStore,
 		archivesDir:      config.ArchivesDir,
 		collectionsDir:   "collections",
-		runCmd:           func(cmd *exec.Cmd) error { return cmd.Run() },
+		runCmd:           func(cmd *exec.Cmd) error { return runProcess(cmd, 10*time.Second) },
 		detectAnubis:     newAnubisDetector(),
 	}
 }
 
 // Run executes the crawler for a specific job.
-func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) error {
+func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Archive, options models.CrawlOptions) (result error) {
+	var logs *joblogs.Session
+	if crawler.logs != nil {
+		logs = crawler.logs.Start(jobID)
+		logs.Message("Starting crawl attempt")
+		defer func() {
+			logs.FlushOutput()
+			if result != nil {
+				logs.Message("Job failed: " + result.Error())
+			} else if ctx.Err() != nil {
+				logs.Message("Job interrupted: " + ctx.Err().Error())
+			} else {
+				logs.Message("Job completed")
+			}
+			logs.Close(result != nil || ctx.Err() != nil)
+		}()
+	}
+	if crawler.archivesDir != "" {
+		for {
+			filename, err := crawler.archiveStore.GetFilename(ctx, archive.ID)
+			if errors.Is(err, store.ErrArchiveNotFound) {
+				break
+			}
+			if err == nil {
+				info, statErr := os.Stat(filepath.Join(crawler.archivesDir, filename))
+				if statErr == nil && info.Mode().IsRegular() {
+					return nil
+				}
+				if statErr == nil {
+					return fmt.Errorf("existing archive is not a regular file")
+				}
+				err = statErr
+			}
+			slog.Warn("cannot verify existing archive; retrying", "job_id", jobID, "error", err)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}
 	setDefaultValuesIfEmpty(&options)
 
 	slog.Info("starting crawl",
@@ -94,6 +139,10 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	if logs != nil {
+		cmd.Stdout = io.MultiWriter(os.Stdout, logs.Stdout())
+		cmd.Stderr = io.MultiWriter(os.Stderr, logs.Stderr())
+	}
 
 	if err := crawler.runCmd(cmd); err != nil {
 		slog.Error("crawl command failed", "job_id", jobID, "url", archive.SourceURL, "error", err)
@@ -101,6 +150,9 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 	}
 
 	archivesDir := crawler.archivesDir
+	if logs != nil {
+		logs.Message("Crawler finished; saving archive")
+	}
 	if archivesDir == "" {
 		slog.Warn("ARCHIVES_DIR not set, archive will not be persisted", "job_id", jobID, "url", archive.SourceURL)
 		return nil
@@ -135,7 +187,7 @@ func (crawler *Crawler) Run(ctx context.Context, jobID string, archive models.Ar
 		}
 	}()
 
-	size, err := io.Copy(dst, src)
+	size, err := io.Copy(dst, contextReader{ctx: ctx, reader: src})
 	if err != nil {
 		return fmt.Errorf("failed to copy wacz: %w", err)
 	}

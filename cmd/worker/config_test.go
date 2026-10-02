@@ -14,6 +14,7 @@ func setWorkerConfigEnv(t *testing.T) {
 	t.Setenv("ARCHIVES_DIR", t.TempDir())
 	t.Setenv("SQLITE_DIR", "")
 	t.Setenv("CRAWLER_TIMEOUT", "")
+	t.Setenv("JOB_TIMEOUT", "")
 	t.Setenv("ANUBIS_MODE", "")
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("CONSUMER_NAME", "")
@@ -154,4 +155,19 @@ func TestLoadConfig_AcceptsNegativeIntegerCrawlerTimeout(t *testing.T) {
 	cfg, err := loadConfig()
 	require.NoError(t, err)
 	require.Equal(t, -1, cfg.CrawlerTimeout)
+}
+
+func TestLoadConfig_JobTimeout(t *testing.T) {
+	for _, value := range []string{"0", "-1", "invalid"} {
+		t.Run(value, func(t *testing.T) {
+			setWorkerConfigEnv(t)
+			t.Setenv("JOB_TIMEOUT", value)
+			_, err := loadConfig()
+			require.ErrorContains(t, err, "JOB_TIMEOUT")
+		})
+	}
+	setWorkerConfigEnv(t)
+	cfg, err := loadConfig()
+	require.NoError(t, err)
+	require.Equal(t, 3600, cfg.JobTimeout)
 }

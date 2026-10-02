@@ -7,6 +7,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/JuanSaenz04/archiver/internal/joblogs"
 	"github.com/JuanSaenz04/archiver/internal/models"
 	"github.com/redis/go-redis/v9"
 )
@@ -18,6 +19,8 @@ type JobService struct {
 func NewJobService(rdb *redis.Client) *JobService {
 	return &JobService{rdb: rdb}
 }
+
+func (service *JobService) Logs() *joblogs.Store { return joblogs.NewStore(service.rdb) }
 
 func (service *JobService) EnqueueCrawl(ctx context.Context, request models.CrawlRequest) (*uuid.UUID, error) {
 	jobID := uuid.New()
@@ -41,7 +44,7 @@ func (service *JobService) EnqueueCrawl(ctx context.Context, request models.Craw
 	}
 
 	_, err = service.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.HSet(ctx, "job:"+jobID.String(), map[string]interface{}{
+		pipe.HSet(ctx, "job:"+jobID.String(), map[string]any{
 			"url":        request.URL,
 			"status":     "pending",
 			"created_at": time.Now().Format(time.RFC3339),
@@ -49,7 +52,7 @@ func (service *JobService) EnqueueCrawl(ctx context.Context, request models.Craw
 		pipe.SAdd(ctx, "jobs:index", jobID.String())
 		pipe.XAdd(ctx, &redis.XAddArgs{
 			Stream: "crawl_stream",
-			Values: map[string]interface{}{
+			Values: map[string]any{
 				"job_id":  jobID.String(),
 				"payload": string(msgBytes),
 			},
@@ -101,6 +104,7 @@ func (service *JobService) GetAllJobs(ctx context.Context) ([]models.Job, error)
 			ID:        uid,
 			URL:       result["url"],
 			Status:    result["status"],
+			Error:     result["error"],
 			CreatedAt: result["created_at"],
 		})
 	}

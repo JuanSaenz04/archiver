@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
 
 	"github.com/JuanSaenz04/archiver/internal/models"
+	"github.com/alicebob/miniredis/v2/server"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
@@ -19,7 +21,7 @@ func startWorker(t *testing.T, ctx context.Context, rdb *redis.Client, process P
 	t.Helper()
 	done := make(chan error, 1)
 	go func() {
-		done <- StartWorker(ctx, rdb, testConsumerName, process)
+		done <- StartWorker(ctx, rdb, testConsumerName, time.Hour, process)
 	}()
 	return done
 }
@@ -245,10 +247,8 @@ func TestStartWorker_AcksMalformedMessagesWithoutCallingProcessor(t *testing.T) 
 
 			enqueueMessage(t, ctx, rdb, tc.values)
 
-			didCall := waitForProcessorCall(processorCalled, 2*time.Second)
-			assert.False(t, didCall, "processor should not be called for malformed message")
-
 			waitForNoPending(t, ctx, rdb, 2*time.Second)
+			assert.Empty(t, processorCalled, "processor should not be called for malformed message")
 		})
 	}
 }
@@ -275,10 +275,8 @@ func TestStartWorker_AcksInvalidJSONPayloadWithoutCallingProcessor(t *testing.T)
 		"payload": "{invalid json",
 	})
 
-	didCall := waitForProcessorCall(processorCalled, 2*time.Second)
-	assert.False(t, didCall, "processor should not be called for invalid JSON payload")
-
 	waitForNoPending(t, ctx, rdb, 2*time.Second)
+	assert.Empty(t, processorCalled, "processor should not be called for invalid JSON payload")
 }
 
 func TestStartWorker_StopsWhenContextIsCanceled(t *testing.T) {
@@ -305,4 +303,171 @@ func TestStartWorker_StopsWhenContextIsCanceled(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("worker did not stop after context cancellation")
 	}
+}
+
+func TestStartWorker_RecoversAbandonedDelivery(t *testing.T) {
+	mr, rdb, ctx := newTestRedis(t)
+	now := time.Now()
+	mr.SetTime(now)
+	createGroup(t, ctx, rdb)
+	jobID := uuid.New().String()
+	enqueueValidMessage(t, ctx, rdb, jobID, makeTestCrawlMessage(jobID))
+	_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: "old-worker", Streams: []string{streamName, ">"}, Count: 1}).Result()
+	assert.NoError(t, err)
+	mr.SetTime(now.Add(2 * time.Hour))
+	called := make(chan struct{}, 1)
+	workerCtx, cancel := context.WithCancel(ctx)
+	done := startWorker(t, workerCtx, rdb, func(context.Context, string, models.Archive, models.CrawlOptions) error {
+		called <- struct{}{}
+		return nil
+	})
+	defer func() { cancel(); <-done }()
+	assert.True(t, waitForProcessorCall(called, 2*time.Second))
+	waitForJobStatus(t, ctx, rdb, jobID, "completed", 2*time.Second)
+	waitForNoPending(t, ctx, rdb, 2*time.Second)
+}
+
+func TestStartWorker_DoesNotReclaimRecentDelivery(t *testing.T) {
+	_, rdb, ctx := newTestRedis(t)
+	activeID, _ := pendingTestMessage(t, rdb, ctx)
+	newID := uuid.New().String()
+	enqueueValidMessage(t, ctx, rdb, newID, makeTestCrawlMessage(newID))
+	workerCtx, cancel := context.WithCancel(ctx)
+	called := make(chan string, 2)
+	done := make(chan error, 1)
+	go func() {
+		done <- StartWorker(workerCtx, rdb, "another-worker", time.Hour, func(_ context.Context, id string, _ models.Archive, _ models.CrawlOptions) error {
+			called <- id
+			return nil
+		})
+	}()
+	defer func() { cancel(); <-done }()
+	select {
+	case id := <-called:
+		assert.Equal(t, newID, id)
+	case <-time.After(2 * time.Second):
+		t.Fatal("new job was not processed")
+	}
+	waitForJobStatus(t, ctx, rdb, newID, "completed", time.Second)
+	pending, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{Stream: streamName, Group: groupName, Start: "-", End: "+", Count: 10}).Result()
+	assert.NoError(t, err)
+	var originalFound bool
+	for _, delivery := range pending {
+		if delivery.Consumer == testConsumerName {
+			originalFound = true
+		}
+	}
+	assert.True(t, originalFound, "active job %s should remain owned by the original worker", activeID)
+}
+
+func pendingTestMessage(t *testing.T, rdb *redis.Client, ctx context.Context) (string, redis.XMessage) {
+	t.Helper()
+	createGroup(t, ctx, rdb)
+	id := uuid.New().String()
+	enqueueValidMessage(t, ctx, rdb, id, makeTestCrawlMessage(id))
+	streams, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: testConsumerName, Streams: []string{streamName, ">"}, Count: 1}).Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id, streams[0].Messages[0]
+}
+
+func TestHandleMessage_TerminalDeliveryIsNotProcessed(t *testing.T) {
+	for _, status := range []string{"completed", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			_, rdb, ctx := newTestRedis(t)
+			id, message := pendingTestMessage(t, rdb, ctx)
+			assert.NoError(t, rdb.HSet(ctx, "job:"+id, "status", status).Err())
+			err := handleMessage(ctx, rdb, message, time.Hour, func(context.Context, string, models.Archive, models.CrawlOptions) error {
+				t.Fatal("terminal job processed")
+				return nil
+			})
+			assert.NoError(t, err)
+			waitForNoPending(t, ctx, rdb, time.Second)
+		})
+	}
+}
+
+func TestHandleMessage_CancellationLeavesPending(t *testing.T) {
+	_, rdb, ctx := newTestRedis(t)
+	id, message := pendingTestMessage(t, rdb, ctx)
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	err := handleMessage(workerCtx, rdb, message, time.Hour, func(context.Context, string, models.Archive, models.CrawlOptions) error {
+		cancel()
+		return errors.New("signal: killed")
+	})
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, "running", rdb.HGet(ctx, "job:"+id, "status").Val())
+	assert.EqualValues(t, 1, rdb.XPending(ctx, streamName, groupName).Val().Count)
+}
+
+func TestHandleMessage_JobDeadlineIsFailure(t *testing.T) {
+	_, rdb, ctx := newTestRedis(t)
+	id, message := pendingTestMessage(t, rdb, ctx)
+	err := handleMessage(ctx, rdb, message, 10*time.Millisecond, func(ctx context.Context, _ string, _ models.Archive, _ models.CrawlOptions) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "failed", rdb.HGet(ctx, "job:"+id, "status").Val())
+	waitForNoPending(t, ctx, rdb, time.Second)
+}
+
+func TestHandleMessage_RetriesStatusWithoutRecrawling(t *testing.T) {
+	mr, rdb, ctx := newTestRedis(t)
+	id, message := pendingTestMessage(t, rdb, ctx)
+	calls := 0
+	restored := make(chan struct{})
+	err := handleMessage(ctx, rdb, message, time.Hour, func(context.Context, string, models.Archive, models.CrawlOptions) error {
+		calls++
+		mr.SetError("ERR temporarily unavailable")
+		go func() {
+			defer close(restored)
+			time.Sleep(100 * time.Millisecond)
+			mr.SetError("")
+		}()
+		return nil
+	})
+	<-restored
+	assert.NoError(t, err)
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, "completed", rdb.HGet(ctx, "job:"+id, "status").Val())
+	waitForNoPending(t, ctx, rdb, time.Second)
+}
+
+func TestHandleMessage_RetriesAcknowledgmentWithoutRecrawling(t *testing.T) {
+	mr, rdb, ctx := newTestRedis(t)
+	id, message := pendingTestMessage(t, rdb, ctx)
+	var acks atomic.Int32
+	mr.Server().SetPreHook(func(peer *server.Peer, cmd string, args ...string) bool {
+		if cmd == "XACK" && acks.Add(1) == 1 {
+			peer.WriteError("ERR temporarily unavailable")
+			return true
+		}
+		return false
+	})
+	calls := 0
+	err := handleMessage(ctx, rdb, message, time.Hour, func(context.Context, string, models.Archive, models.CrawlOptions) error { calls++; return nil })
+	assert.NoError(t, err)
+	assert.Equal(t, 1, calls)
+	assert.GreaterOrEqual(t, acks.Load(), int32(2))
+	assert.Equal(t, "completed", rdb.HGet(ctx, "job:"+id, "status").Val())
+	waitForNoPending(t, ctx, rdb, time.Second)
+	assert.Zero(t, rdb.XLen(ctx, streamName).Val())
+}
+
+func TestHandleMessage_StatusFailureDoesNotAcknowledge(t *testing.T) {
+	mr, rdb, ctx := newTestRedis(t)
+	_, message := pendingTestMessage(t, rdb, ctx)
+	workerCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	err := handleMessage(workerCtx, rdb, message, time.Hour, func(context.Context, string, models.Archive, models.CrawlOptions) error {
+		mr.SetError("ERR temporarily unavailable")
+		return nil
+	})
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	mr.SetError("")
+	assert.EqualValues(t, 1, rdb.XPending(ctx, streamName, groupName).Val().Count)
+	assert.EqualValues(t, 1, rdb.XLen(ctx, streamName).Val())
 }

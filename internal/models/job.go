@@ -7,6 +7,7 @@ import (
 type Job struct {
 	ID        uuid.UUID `json:"id"`
 	URL       string    `json:"url"`
+	Error     string    `json:"error,omitempty"`
 	Status    string    `json:"status"`
 	CreatedAt string    `json:"created_at"`
 }

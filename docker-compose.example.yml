@@ -7,14 +7,20 @@ services:
     restart: unless-stopped
     command:
       - "--requirepass ${REDIS_PASS}"
+      - "--appendonly yes"
+      - "--appendfsync everysec"
+    volumes:
+      - "broker-data:/data"
   worker:
     container_name: "archiver-worker"
+    stop_grace_period: 20s
     image: "ghcr.io/juansaenz04/archiver-worker:latest"
     environment:
       REDIS_URL: "redis://:${REDIS_PASS}@broker:6379/0"
       ARCHIVES_DIR: "/archives"
       CRAWLER_TIMEOUT: "30"
       ANUBIS_MODE: "auto"
+      JOB_TIMEOUT: "${JOB_TIMEOUT:-3600}"
     volumes:
       - "./archives:/archives"
     restart: unless-stopped
@@ -32,3 +38,6 @@ services:
     ports:
       - "${APP_PORT}:1080"
       - "${REPLAY_PORT}:1081"
+
+volumes:
+  broker-data:

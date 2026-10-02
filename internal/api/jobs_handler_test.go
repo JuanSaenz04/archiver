@@ -54,7 +54,7 @@ func TestHandleNewJob(t *testing.T) {
 		if assert.NoError(t, handler.HandleNewJob(c)) {
 			assert.Equal(t, http.StatusCreated, rec.Code)
 
-			var response map[string]interface{}
+			var response map[string]any
 			err := json.Unmarshal(rec.Body.Bytes(), &response)
 			assert.NoError(t, err)
 

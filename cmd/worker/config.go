@@ -18,6 +18,7 @@ type workerConfig struct {
 	SQLiteDir      string
 	LogLevel       slog.Level
 	CrawlerTimeout int
+	JobTimeout     int
 	AnubisMode     crawler.AnubisMode
 	ConsumerName   string
 }
@@ -47,6 +48,14 @@ func loadConfig() (workerConfig, error) {
 		return workerConfig{}, err
 	}
 
+	jobTimeout, err := appconfig.Int("JOB_TIMEOUT", 3600)
+	if err != nil {
+		return workerConfig{}, err
+	}
+	if jobTimeout <= 0 {
+		return workerConfig{}, fmt.Errorf("JOB_TIMEOUT must be positive")
+	}
+
 	anubisMode, err := parseAnubisMode(appconfig.Env("ANUBIS_MODE"))
 	if err != nil {
 		return workerConfig{}, err
@@ -58,6 +67,7 @@ func loadConfig() (workerConfig, error) {
 		SQLiteDir:      sqliteDir,
 		LogLevel:       appconfig.LogLevel(appconfig.Env("LOG_LEVEL")),
 		CrawlerTimeout: crawlerTimeout,
+		JobTimeout:     jobTimeout,
 		AnubisMode:     anubisMode,
 		ConsumerName:   worker.GetWorkerName(appconfig.Env("CONSUMER_NAME"), appconfig.Env("HOSTNAME")),
 	}, nil

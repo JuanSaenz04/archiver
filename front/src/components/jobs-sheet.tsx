@@ -1,4 +1,6 @@
 import { useState } from "react";
+import type { Job } from "@/models/job";
+import { JobLogsDialog } from "@/components/job-logs-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { List, RefreshCw } from "lucide-react";
 import { compactId, formatDateTime, hostname } from "@/lib/format";
@@ -26,9 +28,14 @@ export function JobsSheet({
 	showTrigger = true,
 }: JobsSheetProps) {
 	const [internalOpen, setInternalOpen] = useState(false);
+	const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 	const change = (next: boolean) => {
 		if (open === undefined) setInternalOpen(next);
 		onOpenChange?.(next);
+	};
+	const handleOpenChange = (next: boolean) => {
+		change(next);
+		if (!next) setSelectedJob(null);
 	};
 	const isOpen = open ?? internalOpen;
 	const {
@@ -39,7 +46,7 @@ export function JobsSheet({
 		refetch,
 	} = useQuery({ ...jobsQueryOptions, enabled: isOpen });
 	return (
-		<Sheet open={isOpen} onOpenChange={change}>
+		<Sheet open={isOpen} onOpenChange={handleOpenChange}>
 			{showTrigger && (
 				<SheetTrigger asChild>
 					<Button size="icon" variant="ghost" aria-label="View crawl jobs">
@@ -97,31 +104,44 @@ export function JobsSheet({
 					) : (
 						<div className="space-y-2" aria-live="polite">
 							{jobs.map((j) => (
-								<article
+								<button
+									type="button"
 									key={j.id}
-									className="rounded-md border bg-surface p-3"
+									onClick={() => setSelectedJob(j)}
+									className="block w-full rounded-md border bg-surface p-3 text-left transition-colors hover:bg-surface-subtle"
 								>
-									<div className="flex items-start justify-between gap-2">
-										<div className="min-w-0">
-											<p className="truncate font-medium">{hostname(j.url)}</p>
-											<p
-												className="truncate font-mono text-xs text-muted-foreground"
+									<span className="flex items-start justify-between gap-2">
+										<span className="min-w-0">
+											<span className="block truncate font-medium">
+												{hostname(j.url)}
+											</span>
+											<span
+												className="block truncate font-mono text-xs text-muted-foreground"
 												title={j.url}
 											>
 												{j.url}
-											</p>
-										</div>
+											</span>
+										</span>
 										<StatusPill status={j.status} />
-									</div>
-									<div className="mt-3 flex justify-between font-mono text-[.68rem] text-muted-foreground">
+									</span>
+									<span className="mt-3 flex justify-between font-mono text-[.68rem] text-muted-foreground">
 										<span>{compactId(j.id)}</span>
-										<time>{formatDateTime(j.created_at)}</time>
-									</div>
-								</article>
+										<time dateTime={j.created_at}>
+											{formatDateTime(j.created_at)}
+										</time>
+									</span>
+								</button>
 							))}
 						</div>
 					)}
 				</div>
+				{selectedJob && (
+					<JobLogsDialog
+						key={selectedJob.id}
+						job={selectedJob}
+						onClose={() => setSelectedJob(null)}
+					/>
+				)}
 			</SheetContent>
 		</Sheet>
 	);

@@ -66,7 +66,7 @@ class Te extends Ie{constructor(e){if(super(e),this.it=te,e.type!==Ee)throw Erro
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-class Le extends Te{}Le.directiveName="unsafeSVG",Le.resultType=2;const De=Ae(Le),Me="important",Re=" !"+Me,Fe=Ae(class extends Ie{constructor(e){if(super(e),e.type!==Ce||"style"!==e.name||e.strings?.length>2)throw Error("The `styleMap` directive must be used in the `style` attribute and must be the only part in the attribute.")}render(e){return Object.keys(e).reduce((t,i)=>{const o=e[i];return null==o?t:t+`${i=i.includes("-")?i:i.replace(/(?:^(webkit|moz|ms|o)|)(?=[A-Z])/g,"-$&").toLowerCase()}:${o};`},"")}update(e,[t]){const{style:i}=e.element;if(void 0===this.ft)return this.ft=new Set(Object.keys(t)),this.render(t);for(const e of this.ft)null==t[e]&&(this.ft.delete(e),e.includes("-")?i.removeProperty(e):i[e]=null);for(const e in t){const o=t[e];if(null!=o){this.ft.add(e);const t="string"==typeof o&&o.endsWith(Re);e.includes("-")||t?i.setProperty(e,t?o.slice(0,-11):o,t?Me:""):i[e]=o}}return ee}});var Ue,Oe=__webpack_require__(989);const Be="./w/api",Ne="./w",qe=u(Oe.A);function je(e){return[qe,e]}const He=window.IS_APP||(null===(Ue=window.electron)||void 0===Ue?void 0:Ue.IS_APP)||window.matchMedia("(display-mode: standalone)").matches,We="2.5.0";function Ve(e){" "==e.key&&(e.preventDefault(),e.target.click())}function Ge(e){const t=document.querySelector("head"),i=document.querySelectorAll("link[rel*='icon']");for(const e of i)t.removeChild(e);for(const i of e.icons){const e=document.createElement("link");e.rel=i.rel,e.href=i.href,t.appendChild(e)}}class Ke extends ge{constructor(){super(),this.size="1.1em",this.width=null,this.height=null}static get properties(){return{svg:{type:String},size:{type:String},width:{type:String},height:{type:String}}}static get styles(){return p`
+class Le extends Te{}Le.directiveName="unsafeSVG",Le.resultType=2;const De=Ae(Le),Me="important",Re=" !"+Me,Fe=Ae(class extends Ie{constructor(e){if(super(e),e.type!==Ce||"style"!==e.name||e.strings?.length>2)throw Error("The `styleMap` directive must be used in the `style` attribute and must be the only part in the attribute.")}render(e){return Object.keys(e).reduce((t,i)=>{const o=e[i];return null==o?t:t+`${i=i.includes("-")?i:i.replace(/(?:^(webkit|moz|ms|o)|)(?=[A-Z])/g,"-$&").toLowerCase()}:${o};`},"")}update(e,[t]){const{style:i}=e.element;if(void 0===this.ft)return this.ft=new Set(Object.keys(t)),this.render(t);for(const e of this.ft)null==t[e]&&(this.ft.delete(e),e.includes("-")?i.removeProperty(e):i[e]=null);for(const e in t){const o=t[e];if(null!=o){this.ft.add(e);const t="string"==typeof o&&o.endsWith(Re);e.includes("-")||t?i.setProperty(e,t?o.slice(0,-11):o,t?Me:""):i[e]=o}}return ee}});var Ue,Oe=__webpack_require__(989);const Be="./w/api",Ne="./w",qe=u(Oe.A);function je(e){return[qe,e]}const He=window.IS_APP||(null===(Ue=window.electron)||void 0===Ue?void 0:Ue.IS_APP)||window.matchMedia("(display-mode: standalone)").matches,We="2.5.3";function Ve(e){" "==e.key&&(e.preventDefault(),e.target.click())}function Ge(e){const t=document.querySelector("head"),i=document.querySelectorAll("link[rel*='icon']");for(const e of i)t.removeChild(e);for(const i of e.icons){const e=document.createElement("link");e.rel=i.rel,e.href=i.href,t.appendChild(e)}}class Ke extends ge{constructor(){super(),this.size="1.1em",this.width=null,this.height=null}static get properties(){return{svg:{type:String},size:{type:String},width:{type:String},height:{type:String}}}static get styles(){return p`
       :host {
         display: inline-block;
         padding: 0;
@@ -1023,12 +1023,19 @@ function*(e,t){if(void 0!==e){let i=0;for(const o of e)yield t(o,i++)}}(e.resour
         outline: 1px solid var(--internal-bar-active-text-color);
       }
     `}render(){var e;if(!this.inited)return J``;const t=!!this.tabData.url,i=t&&this.showSidebar;if(!t&&(null===(e=this.tabData)||void 0===e?void 0:e.view)){const e={title:this.tabLabels[this.tabData.view],replayTitle:!1};this.dispatchEvent(new CustomEvent("update-title",{bubbles:!0,composed:!0,detail:e}))}return this.itemInfo&&!this.itemInfo.coll?J` <wr-loader
+        part="loader"
         .loadInfo="${this.loadInfo}"
         embed="${this.embed||""}"
         swName="${_e(null===this.swName?void 0:this.swName)}"
         .coll="${this.item}"
         sourceUrl="${this.sourceUrl||""}"
         @coll-loaded=${this.onItemLoaded}
+        exportparts="
+          base:wr-loader__base,
+          spinner:wr-loader__spinner,
+          spinner-label:wr-loader__spinner-label,
+          content:wr-loader__content,
+        "
       ></wr-loader>`:this.itemInfo?J`
         ${this.renderLocationBar()} ${this.renderVerifyInfo()}
         <sl-dialog label="Archive Info" ${mt(this.archiveInfoDialog)}>
@@ -2011,6 +2018,7 @@ function*(e,t){if(void 0!==e){let i=0;for(const o of e)yield t(o,i++)}}(e.resour
        replay-tabs-nav:wr-item__replay-tabs-nav,
        replay-tabs-panel:wr-item__replay-tabs-panel,
        replay-main:wr-item__replay-main,
+       loader:wr-item__loader,
      "
     ></wr-item>`}renderHomeIndex(){return J` <wr-item-index>
       ${He?"":J`
@@ -2351,7 +2359,7 @@ function*(e,t){if(void 0!==e){let i=0;for(const o of e)yield t(o,i++)}}(e.resour
         font-size: 0.8rem;
       }
     `)}render(){return J`
-      <section class="container">
+      <section class="container" part="base">
         <div class="is-justify-content-center is-flex">
           <fa-icon
             size="5rem"
@@ -2359,13 +2367,16 @@ function*(e,t){if(void 0!==e){let i=0;for(const o of e)yield t(o,i++)}}(e.resour
             .svg=${oo.includes(this.state)?Qe:io}
             aria-label="ReplayWeb.page Logo"
             role="img"
+            part="spinner"
           ></fa-icon>
         </div>
         ${this.embed?"":J` <div class="level">
-              <p class="level-item">Loading&nbsp;<b>${this.sourceUrl}</b>...</p>
+              <p class="level-item" part="spinner-label">
+                Loading&nbsp;<b>${this.sourceUrl}</b>...
+              </p>
             </div>`}
         <div class="level">
-          <div class="level-item has-text-centered">
+          <div class="level-item has-text-centered" part="content">
             ${this.renderContent()}
           </div>
         </div>
